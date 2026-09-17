@@ -26,10 +26,8 @@ try:
 except Exception:
     _SSL_CONTEXT = None
 
+from .config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from .paths import SDCARD_PATH, is_nextui
-
-TELEGRAM_BOT_TOKEN = "8843439406:AAEtTnuMk68ilAniAxj8Kl3uTKZmVKEVDDs"
-TELEGRAM_CHAT_ID = "663642384"
 
 LOG_DIR = os.path.join(SDCARD_PATH, "RetroHub", "logs")
 LOG_FILE = os.path.join(LOG_DIR, "retrohub.log")

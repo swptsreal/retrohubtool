@@ -1,0 +1,17 @@
+name = "retrohub-ota"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+preview_urls = false
+
+# Custom domain. Requires swpts.site to be on the same Cloudflare account.
+routes = [
+  { pattern = "retrohub-ota.swpts.site", zone_name = "swpts.site", custom_domain = true, enabled = true, previews_enabled = false }
+]
+
+# Repo + branch this worker serves. Change here if the repo moves.
+[vars]
+UPSTREAM = "https://raw.githubusercontent.com/swptsreal/retrohubtool/develop"
+
+# Purge endpoint (/__purge) is disabled until this secret is set:
+#   npx wrangler secret put PURGE_TOKEN
+# PURGE_TOKEN = ""
