@@ -523,8 +523,8 @@
     },
     {
       "path": "rh/logger.py",
-      "size": 35782,
-      "sha256": "3c39e36a5a6379be187bf926fb34f7a09f4f3426e9f7b6e3020e8faf31198844"
+      "size": 37775,
+      "sha256": "7b6abf7e86a19aa45653f95e1719224c638301550ded2ca447cee3a65d0d0750"
     },
     {
       "path": "rh/media.py",
