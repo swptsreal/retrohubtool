@@ -1,12 +1,12 @@
 {
-  "version": "3.12",
+  "version": "3.13",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T17:31:24+0700",
+  "built": "2026-09-17T17:41:00+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.12: In-app video dùng RGBA8888 native (GL_RGBA, không swizzle) + log pixel đọc lại sau khi vẽ để xác nhận.",
-    "en": "v3.12: in-app video uses native RGBA8888 (GL_RGBA, no swizzle) + read-back pixel log to confirm the draw."
+    "vi": "Bản 3.13: log danh sách texture format renderer hỗ trợ; chỉ đọc lại pixel sau khi đã upload frame.",
+    "en": "v3.13: log renderer supported texture formats; read back the drawn pixel only after a frame is uploaded."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 23658,
-      "sha256": "0989ecdc7aac0de5fe891d47c2fce1f0bc91bad2b8d102310391c087f03e2af6"
+      "size": 23953,
+      "sha256": "1035b189d2aaf76c86d3648f3d91949755b5a259485feb229e7fc29936980e2d"
     },
     {
       "path": "rh/inputs.py",
@@ -643,8 +643,8 @@
     },
     {
       "path": "rh/screens/player.py",
-      "size": 13542,
-      "sha256": "4fa89fdc9521d2c3a2615eed6b15774975a7fc6b41762e29579c18c8633d9b0b"
+      "size": 13648,
+      "sha256": "6b440621579d419542000d5b92e1c8e61c57bbb952a69c592f06f9ad472cd4ff"
     },
     {
       "path": "rh/screens/queue.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1530,
-      "sha256": "9466b4d19b6db7dfe3f7cbbc8b05a4fd10669c2ad3eb0ae5ddad4d9336754cae"
+      "sha256": "9a2c1126a7568389a73c5858f4576fabca2e2a48062d65b22963f001a1fdf981"
     },
     {
       "path": "rh/yt.py",

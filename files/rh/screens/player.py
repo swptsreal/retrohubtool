@@ -296,7 +296,8 @@ class PlayerScreen(BaseScreen):
         dy = area_y + (area_h - dh) // 2
         rect = sdl2.SDL_Rect(dx, dy, dw, dh)
         rc = sdl2.SDL_RenderCopy(engine.renderer, self.player.texture, None, rect)
-        if not self._rc_logged:
+        # Sample the drawn pixel only once a real frame has been uploaded.
+        if not self._rc_logged and self.player.has_uploaded():
             self._rc_logged = True
             try:
                 from ..yt_player import log as _ytlog

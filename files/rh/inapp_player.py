@@ -231,9 +231,11 @@ class InAppPlayer:
         try:
             info = sdl2.SDL_RendererInfo()
             if sdl2.SDL_GetRendererInfo(self.renderer, ctypes.byref(info)) == 0:
-                _log("renderer: %s flags=0x%x max=%dx%d" %
+                fmts = ",".join(hex(info.texture_formats[i])
+                                for i in range(info.num_texture_formats))
+                _log("renderer: %s flags=0x%x max=%dx%d formats=[%s]" %
                      (info.name.decode() if info.name else "?",
-                      info.flags, info.max_texture_width, info.max_texture_height))
+                      info.flags, info.max_texture_width, info.max_texture_height, fmts))
         except Exception as e:
             _log("renderer info error: %s" % e)
 
@@ -608,6 +610,10 @@ class InAppPlayer:
     def produced_data(self) -> bool:
         """True once any audio or video bytes arrived (i.e. it actually played)."""
         return self._got_audio or self._got_video
+
+    def has_uploaded(self) -> bool:
+        """True once at least one video frame reached the texture."""
+        return self._video_up > 0
 
     def is_finished(self) -> bool:
         if self.error:
