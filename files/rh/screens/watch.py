@@ -12,7 +12,7 @@ import threading
 from .. import playback, state, yt
 from ..i18n import tr
 from ..paths import YT_CACHE_DIR
-from ..player import get_backend, launch_session
+from ..player import get_backend, start_session
 from .base import BaseScreen
 
 QUALITY_CYCLE = ("360", "480", "720")
@@ -119,11 +119,7 @@ class WatchScreen(BaseScreen):
             context=self.context,
             audio_only=self.audio_only,
         )
-        if get_backend().capabilities.get("inline_ui"):
-            playback.save_session(sess)
-            self.engine.push_screen("player", {"session": sess, "quality": self.quality})
-        else:
-            launch_session(self.engine, sess)
+        start_session(self.engine, sess, self.quality)
 
     def _toggle_favorite(self):
         favs = yt.load_favorites()

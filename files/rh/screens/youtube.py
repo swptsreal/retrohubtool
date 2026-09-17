@@ -2,12 +2,10 @@
 """YouTube Stream Player & Video Grid Screen."""
 
 import os
-import time
 import threading
 from .. import playback, state, yt
 from ..paths import YT_CACHE_DIR
 from ..i18n import tr
-from ..yt_player import play_video
 from .base import BaseScreen
 
 
@@ -103,7 +101,7 @@ class YoutubeScreen(BaseScreen):
                     else:
                         self.videos = yt.search_youtube(cur_q) or []
             except Exception as e:
-                self.engine.toast(f"Lỗi tải YouTube: {e}")
+                self.engine.toast("%s: %s" % (tr("yt_load_error"), e))
             self.loading = False
             if not self.videos:
                 self.load_error = yt.get_last_error()
@@ -202,7 +200,7 @@ class YoutubeScreen(BaseScreen):
 
             self.engine.push_screen("keyboard", {
                 "initial_text": "",
-                "prompt": "Nhập từ khóa tìm kiếm...",
+                "prompt": tr("yt_search_prompt"),
                 "on_search": _on_search
             })
             return True
@@ -214,7 +212,7 @@ class YoutubeScreen(BaseScreen):
                 favs = yt.load_favorites()
                 new_favs, is_added = yt.toggle_favorite(v, favs)
                 self.fav_ids = {f.get("id") for f in new_favs if f.get("id")}
-                action_str = "Đã lưu vào Yêu thích" if is_added else "Đã xóa khỏi Yêu thích"
+                action_str = tr("yt_fav_added") if is_added else tr("yt_fav_removed")
                 clean_t = yt.clean_yt_text(v.get("title", "Video"))
                 self.engine.toast(f"{action_str}: {clean_t[:24]}")
 
@@ -360,7 +358,7 @@ class YoutubeScreen(BaseScreen):
         content_h = state.SCREEN_H - content_y - 56
 
         if self.loading:
-            engine.draw_text("ĐANG TẢI DANH SÁCH VIDEO...", engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 255, 215, 0, center_x=True, center_y=True)
+            engine.draw_text(tr("yt_loading_list"), engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 255, 215, 0, center_x=True, center_y=True)
             return
 
         if not self.videos:
@@ -373,7 +371,7 @@ class YoutubeScreen(BaseScreen):
                                  content_y + content_h // 2 + 26, 140, 160, 190,
                                  center_x=True, center_y=True)
             else:
-                msg = "CHƯA CÓ VIDEO YÊU THÍCH (BẤM [Y] ĐỂ THÊM)" if cur_tab in ("★ Yêu thích", "Yêu thích") else "KHÔNG CÓ VIDEO NÀO"
+                msg = tr("yt_empty_fav") if cur_tab in ("★ Yêu thích", "Yêu thích") else tr("yt_empty_list")
                 engine.draw_text(msg, engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 140, 160, 190, center_x=True, center_y=True)
             return
 

@@ -12,6 +12,7 @@ session logic.
 import os
 
 from . import playback, state
+from .i18n import tr
 from .paths import APP_DIR, SDCARD_PATH, YT_SESSION_FILE
 
 
@@ -163,7 +164,30 @@ def launch_session(engine, session) -> bool:
         return True
     except Exception as e:
         try:
-            engine.toast(f"Lỗi mở video: {e}")
+            engine.toast("%s: %s" % (tr("yt_err_open"), e))
         except Exception:
             pass
         return False
+
+
+def start_session(engine, session, quality=None) -> bool:
+    """Play a session in-app when the backend can draw its own UI, else hand off.
+
+    Shared by the watch and queue screens so both pick the same backend and the
+    in-app player is not bypassed just because playback started elsewhere.
+    """
+    if get_backend().capabilities.get("inline_ui"):
+        try:
+            playback.save_session(session)
+            engine.push_screen("player", {
+                "session": session,
+                "quality": quality or getattr(state, "video_quality", "360"),
+            })
+            return True
+        except Exception as e:
+            try:
+                engine.toast("%s: %s" % (tr("yt_err_open"), e))
+            except Exception:
+                pass
+            return False
+    return launch_session(engine, session)
