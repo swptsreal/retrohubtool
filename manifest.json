@@ -1,12 +1,12 @@
 {
-  "version": "3.3",
+  "version": "3.4",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T16:24:12+0700",
+  "built": "2026-09-17T16:31:44+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.3: In-app player tự tải luồng bằng Python và pipe vào ffmpeg (khắc phục ffmpeg thiếu http trên máy); ưu tiên H.264/AAC.",
-    "en": "v3.3: In-app player fetches the stream in Python and pipes it into ffmpeg (fixes the device ffmpeg lacking http); prefer H.264/AAC."
+    "vi": "Bản 3.4: In-app player dùng pipe (audio OK); thêm log chẩn đoán video (frames read/upload/drop, feed bytes, UpdateTexture error).",
+    "en": "v3.4: In-app player pipe mode (audio OK); add video diagnostics (frames read/upload/drop, feed bytes, UpdateTexture errors)."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 18525,
-      "sha256": "7761af85c2b7bda1b5e7865c78bc99fe9f034f5f7fad7188159e0e821b920cb8"
+      "size": 19625,
+      "sha256": "2f81218ec061bf85868b8a7bc06208b42ced075e414a71ed697da6d685aae0b3"
     },
     {
       "path": "rh/inputs.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1529,
-      "sha256": "7573d43a7f60299d3e683fc7dee33ad8c8337441f4f32a3e98fce8e815658e39"
+      "sha256": "7f97758b5d58e453917d8597058ee2a4eae6a65911511e249ba3482e1626c443"
     },
     {
       "path": "rh/yt.py",

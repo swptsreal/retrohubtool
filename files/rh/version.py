@@ -7,7 +7,7 @@ constant must stay in sync with the git tag."""
 
 import re
 
-APP_VERSION = "3.3"
+APP_VERSION = "3.4"
 
 # Pre-release tags sort before the final release of the same number.
 _TAG_ORDER = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}

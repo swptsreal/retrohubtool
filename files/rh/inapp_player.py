@@ -169,6 +169,10 @@ class InAppPlayer:
         self._audio_done = False
         self._got_audio = False
         self._got_video = False
+        self._got_upload = False
+        self._video_read = 0
+        self._video_up = 0
+        self._video_drop = 0
         self.audio_err = None
         self.video_err = None
         self.paused = False
@@ -302,10 +306,12 @@ class InAppPlayer:
         `-i pipe:0` avoids that entirely."""
         import ssl as _ssl
         import urllib.request as _urlreq
+        total = 0
         try:
             req = _urlreq.Request(url, headers={"User-Agent": _UA})
             ctx = _ssl._create_unverified_context()
             with _urlreq.urlopen(req, timeout=20, context=ctx) as resp:
+                _log("feed %s start" % kind)
                 while not self._stop.is_set():
                     if self.paused:
                         time.sleep(0.02)
@@ -315,11 +321,13 @@ class InAppPlayer:
                         break
                     try:
                         proc.stdin.write(chunk)
+                        total += len(chunk)
                     except Exception:
                         break
         except Exception as e:
             _log("feed %s error: %s" % (kind, e))
         finally:
+            _log("feed %s done bytes=%d" % (kind, total))
             try:
                 if proc.stdin:
                     proc.stdin.close()
@@ -435,6 +443,8 @@ class InAppPlayer:
                 if not data or len(data) < frame_bytes:
                     break
                 self._got_video = True
+                if idx == 0:
+                    _log("video: first frame read (%d bytes, expect %d)" % (len(data), frame_bytes))
                 with self._frame_lock:
                     self._frames.append((idx / float(FPS), data))
                 idx += 1
@@ -442,7 +452,11 @@ class InAppPlayer:
             self.error = f"video: {e}"
         finally:
             self._video_done = True
+            self._video_read = idx
             self._dump_err("v")
+            _log("video: loop end read=%d up=%d drop=%d rc=%s" %
+                 (idx, self._video_up, self._video_drop,
+                  proc.poll() if proc else "?"))
 
     def _dump_err(self, kind):
         """Log the tail of ffmpeg's stderr so failures are diagnosable."""
@@ -488,13 +502,21 @@ class InAppPlayer:
         with self._frame_lock:
             while self._frames and self._frames[0][0] < audio_pos - SYNC_DROP:
                 self._frames.popleft()
+                self._video_drop += 1
             if self._frames and self._frames[0][0] <= audio_pos + SYNC_HOLD:
                 due = self._frames.popleft()[1]
         if due is not None:
+            if not self._got_upload:
+                self._got_upload = True
+                _log("video: first frame uploaded (audio_pos=%.2f)" % audio_pos)
             try:
                 sdl2.SDL_UpdateTexture(self.texture, None, ctypes.c_char_p(due), self._w * 4)
-            except Exception:
-                pass
+                self._video_up += 1
+                if self._video_up % 300 == 0:
+                    _log("video: up=%d drop=%d pos=%.2f queued=%d" %
+                         (self._video_up, self._video_drop, audio_pos, len(self._frames)))
+            except Exception as e:
+                _log("video: UpdateTexture error: %s" % e)
 
     def produced_data(self) -> bool:
         """True once any audio or video bytes arrived (i.e. it actually played)."""
