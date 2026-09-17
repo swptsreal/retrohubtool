@@ -46,6 +46,21 @@ SYNC_HOLD = 0.05                        # release a frame within this of the clo
 RENDER_HEIGHTS = {"360": 360, "480": 480, "720": 540}
 
 
+def _read_exact(f, n):
+    """Read exactly *n* bytes from a raw pipe.
+
+    A raw pipe read can return a short count even mid-stream, so a single
+    read() is not enough to know EOF. Returns b"" only on a clean EOF at a
+    frame boundary, or a shorter buffer if EOF hit mid-frame."""
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = f.read(n - len(buf))
+        if not chunk:
+            break
+        buf.extend(chunk)
+    return bytes(buf)
+
+
 def _url_itag(url):
     """Extract the YouTube itag from a googlevideo URL (for diagnostics)."""
     try:
@@ -458,10 +473,13 @@ class InAppPlayer:
                 if full:
                     time.sleep(0.01)
                     continue
-                data = proc.stdout.read(frame_bytes)
-                if not data or len(data) < frame_bytes:
-                    _log("video: short read (got %d of %d) after %d frames" %
-                         (len(data) if data else 0, frame_bytes, idx))
+                data = _read_exact(proc.stdout, frame_bytes)
+                if not data:
+                    _log("video: EOF after %d frames" % idx)
+                    break
+                if len(data) < frame_bytes:
+                    _log("video: partial frame at EOF (%d of %d) after %d frames" %
+                         (len(data), frame_bytes, idx))
                     break
                 self._got_video = True
                 if idx == 0:

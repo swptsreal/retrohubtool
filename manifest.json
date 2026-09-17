@@ -1,12 +1,12 @@
 {
-  "version": "3.5",
+  "version": "3.6",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T16:40:19+0700",
+  "built": "2026-09-17T16:57:06+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.5: chẩn đoán video in-app (giữ stderr qua các lần seek, log itag/short read, thử -f mp4 cho pipe).",
-    "en": "v3.5: in-app video diagnostics (keep ffmpeg stderr across seeks, log itag/short read, try -f mp4 for pipe)."
+    "vi": "Bản 3.6: Sửa video in-app đen (đọc đủ frame từ pipe, tránh short-read bị hiểu nhầm là EOF).",
+    "en": "v3.6: Fix black in-app video (read full frames from the pipe; a short read is not EOF)."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 20516,
-      "sha256": "15a3abc38c2574b46d20dcaa6f492ba2d082d0c6b15e88b7d5b9410abe995614"
+      "size": 21077,
+      "sha256": "bca741d0d6c4830bd284110fb425234490f2f7dbd08fc1aac21f2ab097e5a41b"
     },
     {
       "path": "rh/inputs.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1529,
-      "sha256": "0acb16b6fe093cd5fc8ae228cd606ce9a5263dff8a2285ab5d4ac8259df26f5a"
+      "sha256": "e72e558f67bae734f344df2145af2041c6937e2144717ddc9094f6ecf94a5da3"
     },
     {
       "path": "rh/yt.py",
