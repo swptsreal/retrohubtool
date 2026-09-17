@@ -27,6 +27,9 @@ try:
 except Exception:  # pragma: no cover - only on non-device hosts
     sdl2 = sdl_audio = sdl_render = sdl_pixels = None
 
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
 AUDIO_RATE = 48000
 AUDIO_CHANNELS = 2
 AUDIO_SAMPLE_BYTES = 2
@@ -104,6 +107,43 @@ def h264_status():
 def precompute_decoder_check():
     """Probe the H.264 decoder off the main thread (cached afterwards)."""
     threading.Thread(target=has_h264_decoder, daemon=True).start()
+
+
+_HTTP_CACHE = None
+
+
+def has_http_protocol():
+    """True when the device ffmpeg can open http(s) URLs.
+
+    The bundled ffmpeg is built for the screen streamer (rawvideo -> mjpeg) and
+    often has no network protocols, so feeding it a googlevideo URL fails with
+    "Protocol not found". Cached because `-protocols` is slow.
+    """
+    global _HTTP_CACHE
+    if _HTTP_CACHE is not None:
+        return _HTTP_CACHE
+    ff = find_ffmpeg()
+    if not ff:
+        _HTTP_CACHE = False
+        return False
+    try:
+        out = subprocess.run(
+            [ff, "-hide_banner", "-protocols"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=6
+        ).stdout.decode("utf-8", "ignore")
+        _HTTP_CACHE = ("https" in out) or ("http" in out)
+    except Exception:
+        _HTTP_CACHE = False
+    return _HTTP_CACHE
+
+
+def http_protocol_status():
+    """Cached result of has_http_protocol(): True/False, or None if not probed."""
+    return _HTTP_CACHE
+
+
+def precompute_protocol_check():
+    threading.Thread(target=has_http_protocol, daemon=True).start()
 
 
 def available():
@@ -225,10 +265,10 @@ class InAppPlayer:
         self._frames.clear()
 
     def seek(self, pos):
-        """Restart both streams at *pos* seconds without rebuilding the device."""
-        pos = max(0.0, float(pos))
-        self._start_pos = pos
-        self.position = pos
+        """Pipe mode cannot seek; restart the stream from the beginning."""
+        _log("seek %.1fs requested; pipe mode restarts from 0" % max(0.0, float(pos)))
+        self._start_pos = 0.0
+        self.position = 0.0
         self._kill_procs()
         self._stop.clear()
         self._frames.clear()
@@ -249,24 +289,57 @@ class InAppPlayer:
     # ------------------------------------------------------------------
     # ffmpeg processes
     # ------------------------------------------------------------------
-    def _seek_args(self):
-        if self._start_pos > 0:
-            return ["-ss", "%.3f" % self._start_pos]
-        return []
+    def _spawn_feeder(self, url, proc, kind):
+        t = threading.Thread(target=self._feed_stream, args=(url, proc, kind), daemon=True)
+        t.start()
+        self._threads.append(t)
+
+    def _feed_stream(self, url, proc, kind):
+        """Fetch the stream with Python and pipe it into ffmpeg's stdin.
+
+        The device ffmpeg has no http(s) protocol (it is built for the screen
+        streamer), so it cannot open a googlevideo URL directly. Feeding
+        `-i pipe:0` avoids that entirely."""
+        import ssl as _ssl
+        import urllib.request as _urlreq
+        try:
+            req = _urlreq.Request(url, headers={"User-Agent": _UA})
+            ctx = _ssl._create_unverified_context()
+            with _urlreq.urlopen(req, timeout=20, context=ctx) as resp:
+                while not self._stop.is_set():
+                    if self.paused:
+                        time.sleep(0.02)
+                        continue
+                    chunk = resp.read(READ_CHUNK)
+                    if not chunk:
+                        break
+                    try:
+                        proc.stdin.write(chunk)
+                    except Exception:
+                        break
+        except Exception as e:
+            _log("feed %s error: %s" % (kind, e))
+        finally:
+            try:
+                if proc.stdin:
+                    proc.stdin.close()
+            except Exception:
+                pass
 
     def _spawn_audio(self, ff):
-        cmd = [ff, "-hide_banner", "-loglevel", "error"] + self._seek_args()
-        cmd += ["-i", self._audio_url, "-vn"]
+        cmd = [ff, "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn"]
         if abs(self.speed - 1.0) > 0.01:
             cmd += ["-af", "atempo=%.3f" % self.speed]
         cmd += ["-f", "s16le", "-ar", str(AUDIO_RATE), "-ac", str(AUDIO_CHANNELS), "pipe:1"]
-        _log("audio cmd: " + " ".join(cmd[:6]) + " ...")
+        _log("audio: ffmpeg -i pipe:0 (fed from python)")
         try:
             self.audio_err = open("/tmp/rh_ffmpeg_a.log", "wb")
         except Exception:
             self.audio_err = subprocess.DEVNULL
         self.audio_proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=self.audio_err, bufsize=0)
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=self.audio_err, bufsize=0)
+        self._spawn_feeder(self._audio_url, self.audio_proc, "a")
         t = threading.Thread(target=self._audio_loop, daemon=True)
         t.start()
         self._threads.append(t)
@@ -275,16 +348,17 @@ class InAppPlayer:
         vf = "fps=%d,scale=%d:%d:flags=fast_bilinear" % (FPS, self._w, self._h)
         if abs(self.speed - 1.0) > 0.01:
             vf = "setpts=PTS/%.3f,%s" % (self.speed, vf)
-        cmd = [ff, "-hide_banner", "-loglevel", "error"] + self._seek_args()
-        cmd += ["-i", self._video_url, "-an", "-vf", vf,
-                "-pix_fmt", "bgra", "-f", "rawvideo", "pipe:1"]
-        _log("video cmd: " + " ".join(cmd[:6]) + " ...")
+        cmd = [ff, "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
+               "-an", "-vf", vf, "-pix_fmt", "bgra", "-f", "rawvideo", "pipe:1"]
+        _log("video: ffmpeg -i pipe:0 (fed from python)")
         try:
             self.video_err = open("/tmp/rh_ffmpeg_v.log", "wb")
         except Exception:
             self.video_err = subprocess.DEVNULL
         self.video_proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=self.video_err, bufsize=0)
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=self.video_err, bufsize=0)
+        self._spawn_feeder(self._video_url, self.video_proc, "v")
         t = threading.Thread(target=self._video_loop, daemon=True)
         t.start()
         self._threads.append(t)

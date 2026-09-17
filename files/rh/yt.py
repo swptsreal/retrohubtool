@@ -1057,9 +1057,11 @@ def resolve_streams(video_id: str, quality: str = "360") -> dict:
 
     h = QUALITY_HEIGHTS.get(str(quality), 360)
     yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    # Prefer H.264 + AAC: the device ffmpeg/player may lack AV1/VP9/Opus.
     format_list = [
+        f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]",
+        f"bestvideo[height<={h}][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]",
         f"bestvideo[height<={h}][ext=mp4]+bestaudio[ext=m4a]",
-        f"bestvideo[height<={h}]+bestaudio",
         f"best[height<={h}][ext=mp4]",
         "18/best[ext=mp4]/best",
     ]

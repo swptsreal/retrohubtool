@@ -1,12 +1,12 @@
 {
-  "version": "3.2",
+  "version": "3.3",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T16:11:30+0700",
+  "built": "2026-09-17T16:24:12+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.2 (3.2-rc1 thử nghiệm): hỗ trợ hậu tố phiên bản (rc/beta) cho OTA; gửi log YouTube/in-app player qua Telegram; fix web log endpoint.",
-    "en": "v3.2 (3.2-rc1 test): pre-release version suffix support for OTA; send YouTube/in-app player logs via Telegram; fix web log endpoint."
+    "vi": "Bản 3.3: In-app player tự tải luồng bằng Python và pipe vào ffmpeg (khắc phục ffmpeg thiếu http trên máy); ưu tiên H.264/AAC.",
+    "en": "v3.3: In-app player fetches the stream in Python and pipes it into ffmpeg (fixes the device ffmpeg lacking http); prefer H.264/AAC."
   },
   "remove": [
     "app.pyc",
@@ -363,8 +363,8 @@
     },
     {
       "path": "gameweb.py",
-      "size": 138071,
-      "sha256": "6b4928734138bda8d6aa8b229784e7bb4fbb545f3e099696598cb47fe93e33d0"
+      "size": 138502,
+      "sha256": "ff4143727150f1fde9b44e62631c41c9413e7be8a171aca9e8c06149bd219f5b"
     },
     {
       "path": "icon.png",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 15856,
-      "sha256": "c9cf8a7741b1a2d769c3ef8fdf8769d7b63370347855e44b4883e5d08c91d847"
+      "size": 18525,
+      "sha256": "7761af85c2b7bda1b5e7865c78bc99fe9f034f5f7fad7188159e0e821b920cb8"
     },
     {
       "path": "rh/inputs.py",
@@ -593,8 +593,8 @@
     },
     {
       "path": "rh/player.py",
-      "size": 5877,
-      "sha256": "e9a77bbe8a23bb57b3097aff86a5c383a82f3294bc70d8ec8a2f7cdf665d4993"
+      "size": 5945,
+      "sha256": "c65d896f3156cff8226d84d14de689f80c5d2e5c1bcc5e28ce19952dc1ccfa36"
     },
     {
       "path": "rh/romfiles.py",
@@ -734,12 +734,12 @@
     {
       "path": "rh/version.py",
       "size": 1529,
-      "sha256": "30aabe14d9b84f2ab59fad5ca97d393f319fde6fe04315c3919acd4ff4c514c4"
+      "sha256": "7573d43a7f60299d3e683fc7dee33ad8c8337441f4f32a3e98fce8e815658e39"
     },
     {
       "path": "rh/yt.py",
-      "size": 45817,
-      "sha256": "2781f2e984c08dbda05c2121591af3fa7caf113e8026503dd9e74f31a25c64ca"
+      "size": 45996,
+      "sha256": "067897807476a30e051106811fc44502c49f3b82081536045faec371b7028239"
     },
     {
       "path": "rh/yt_player.py",

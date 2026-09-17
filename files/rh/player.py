@@ -83,12 +83,13 @@ def inapp_available() -> bool:
         from . import inapp_player
         if not inapp_player.available():
             return False
-        status = inapp_player.h264_status()
-        if status is None:
-            # Probe off the main thread; optimistically allow in-app for now.
+        # ffmpeg is fed the stream over a pipe, so it needs no http protocol;
+        # only the H.264 decoder is required.
+        h264 = inapp_player.h264_status()
+        if h264 is None:
             inapp_player.precompute_decoder_check()
-            return True
-        return bool(status)
+            return True  # optimistic while probing
+        return bool(h264)
     except Exception:
         return False
 
