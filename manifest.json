@@ -1,12 +1,12 @@
 {
-  "version": "3.0",
+  "version": "3.1",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T14:17:19+0700",
+  "built": "2026-09-17T15:46:25+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.0: Đại tu YouTube (trang chi tiết, hàng đợi, trình phát trong app, chỉ nghe nhạc), cấu hình theo biến môi trường, kênh OTA qua Cloudflare Worker.",
-    "en": "v3.0: YouTube overhaul (watch page, queue, in-app player, audio-only), env-based config, Cloudflare Worker OTA channel."
+    "vi": "Bản 3.1: Cập nhật bot Telegram mới để gửi nhật ký (log) và thông báo; sửa lỗi thoát ứng dụng (đóng modal, thoát sạch, timeout self-heal).",
+    "en": "v3.1: New Telegram bot for log upload and notifications; robust app exit (modal close, clean shutdown, self-heal timeout)."
   },
   "remove": [
     "app.pyc",
@@ -433,8 +433,8 @@
     },
     {
       "path": "rh/config.py",
-      "size": 1693,
-      "sha256": "d16d3ba8ad42bfc17c89ba0336fb856ba35fe00f7262803c5e94fa51560a70e8"
+      "size": 1694,
+      "sha256": "8c42514e7f744023dbab27d0c28726f41be9dae60a5f45f474a1f95f100d7798"
     },
     {
       "path": "rh/corepicker.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 854,
-      "sha256": "cea652fe422d90742d09102e9a867f9d8c22e393269ee21877a8842c52b5a0a6"
+      "sha256": "63d0edd48b6117ca2c1f97e011ef2805b886a3e2924ef939b784624b66798349"
     },
     {
       "path": "rh/yt.py",
