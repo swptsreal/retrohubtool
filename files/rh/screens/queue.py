@@ -8,7 +8,7 @@ file so the runner picks them up.
 
 from .. import playback, state
 from ..i18n import tr
-from ..player import launch_session
+from ..player import start_session
 from .base import BaseScreen
 
 _REPEAT_CYCLE = ("off", "all", "one")
@@ -68,7 +68,7 @@ class QueueScreen(BaseScreen):
         sess.index = self.sel
         sess.repeat = self.repeat
         sess.shuffle = self.shuffle
-        launch_session(self.engine, sess)
+        start_session(self.engine, sess, getattr(state, "video_quality", "360"))
 
     def _remove(self):
         if not self.queue:

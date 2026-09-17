@@ -22,6 +22,8 @@ from ..i18n import tr
 from .base import BaseScreen
 
 QUALITY_CYCLE = ("360", "480", "720")
+WATCHED_STEP = 30.0   # seconds of playback between watch-history disk writes
+SEEK_SETTLE = 0.45    # wait this long after the last seek key before restarting
 
 
 class PlayerScreen(BaseScreen):
@@ -42,6 +44,10 @@ class PlayerScreen(BaseScreen):
         self._leaving = False
         self._fallback_done = False
         self._rc_logged = False
+        self._seek_target = None
+        self._seek_deadline = 0.0
+        self._last_watched_pos = -1e9
+        self._cached_url_used = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -60,6 +66,8 @@ class PlayerScreen(BaseScreen):
         self._play_current()
 
     def on_exit(self):
+        self._save_progress(force=True)
+        self._seek_target = None
         self._stop_player()
 
     def get_header_title(self):
@@ -89,6 +97,9 @@ class PlayerScreen(BaseScreen):
             self._pending_start = None
         else:
             start = playback.resume_position(v.get("id"), self.duration)
+        self._seek_target = None
+        self._last_watched_pos = -1e9
+        self._cached_url_used = False
         self.status = tr("yt_pl_buffering")
         self.resolving = True
         self._stop_player()
@@ -96,6 +107,9 @@ class PlayerScreen(BaseScreen):
 
     def _bg_resolve(self, v, start):
         res = None
+        # A cached URL is not re-validated by yt-dlp, so remember whether the
+        # stream about to play came from the cache (it may have expired).
+        cached = bool(yt.get_cached_streams(v.get("id"), self.quality))
         try:
             res = yt.resolve_streams(v.get("id"), self.quality)
         except Exception as e:
@@ -107,6 +121,7 @@ class PlayerScreen(BaseScreen):
             # than skipping through the whole queue.
             self._fallback_retroarch(tr("yt_err_play"))
             return
+        self._cached_url_used = cached
         self._start_player(res, start)
 
     def _start_player(self, res, start):
@@ -154,6 +169,7 @@ class PlayerScreen(BaseScreen):
             self._finish_session()
 
     def _advance_or_finish(self):
+        self._save_progress(force=True)
         self._stop_player()
         if self.session and self.session.advance():
             playback.save_session(self.session)
@@ -162,6 +178,7 @@ class PlayerScreen(BaseScreen):
             self._finish_session()
 
     def _finish_session(self):
+        self._save_progress(force=True)
         if self.session:
             self.session.state = "idle"
             playback.save_session(self.session)
@@ -170,7 +187,7 @@ class PlayerScreen(BaseScreen):
         if self.engine.current_screen_name == "player":
             self.engine.pop_screen()
 
-    def _save_progress(self):
+    def _save_progress(self, force=False):
         if not self.player or not self.current:
             return
         pos = self.player.get_position()
@@ -180,7 +197,30 @@ class PlayerScreen(BaseScreen):
             playback.clear_progress(vid)
         elif pos >= playback.RESUME_MIN_POS:
             playback.set_progress(vid, pos, dur, self.current.get("title", ""), self.channel)
-        playback.add_watched(self.current, pos)
+        # Watch history is a disk write; refresh it every WATCHED_STEP seconds
+        # (or when leaving the video) instead of on every progress tick.
+        if force or abs(pos - self._last_watched_pos) >= WATCHED_STEP:
+            self._last_watched_pos = pos
+            playback.add_watched(self.current, pos)
+
+    def _queue_seek(self, delta):
+        """Accumulate a seek and apply it once the D-pad stops repeating.
+
+        Seeking re-spawns both ffmpeg decoders, so applying every autorepeat
+        event (~13/s while held) would spawn a decoder storm.
+        """
+        if not self.player:
+            return
+        base = self._seek_target
+        if base is None:
+            base = self.player.get_position()
+        target = max(0.0, base + delta)
+        if self.duration > 0:
+            target = min(target, max(0.0, self.duration - 1.0))
+        self._seek_target = target
+        self._seek_deadline = time.time() + SEEK_SETTLE
+        self.status = "%s %s" % (tr("yt_pl_seek"), playback.format_seconds(target))
+        self._overlay_until = time.time() + 4
 
     # ------------------------------------------------------------------
     # Input
@@ -189,7 +229,7 @@ class PlayerScreen(BaseScreen):
         if self._leaving:
             return True
         if inputs.get("btn_b"):
-            self._save_progress()
+            self._save_progress(force=True)
             if self.session:
                 self.session.state = "idle"
                 playback.save_session(self.session)
@@ -204,17 +244,17 @@ class PlayerScreen(BaseScreen):
             self.player.set_paused(not self.player.paused)
             self.status = tr("yt_pl_paused") if self.player.paused else ""
         elif inputs.get("btn_y"):
-            self._save_progress()
+            self._save_progress(force=True)
             self._advance_or_finish()
             return True
         elif inputs.get("btn_left"):
-            self.player.seek(max(0.0, self.player.get_position() - 10))
+            self._queue_seek(-10)
         elif inputs.get("btn_right"):
-            self.player.seek(self.player.get_position() + 10)
+            self._queue_seek(10)
         elif inputs.get("btn_l1"):
-            self.player.seek(max(0.0, self.player.get_position() - 60))
+            self._queue_seek(-60)
         elif inputs.get("btn_r1"):
-            self.player.seek(self.player.get_position() + 60)
+            self._queue_seek(60)
         elif inputs.get("btn_up"):
             self.player.set_volume(self.player.volume + 5)
         elif inputs.get("btn_down"):
@@ -248,6 +288,13 @@ class PlayerScreen(BaseScreen):
     def update(self, dt):
         if not self.player:
             return
+        # Apply a pending seek once the user stops pressing left/right.
+        if self._seek_target is not None and time.time() >= self._seek_deadline:
+            target = self._seek_target
+            self._seek_target = None
+            self.player.seek(target)
+            self.status = ""
+            self._overlay_until = time.time() + 2
         self.player.update()
         if self.player.error:
             self.status = self.player.error
@@ -257,10 +304,19 @@ class PlayerScreen(BaseScreen):
             self._last_progress = now
         if self.player.is_finished():
             played = self.player.produced_data()
-            self._save_progress()
+            self._save_progress(force=True)
             if not played:
-                # ffmpeg produced nothing (bad URL/codec): use RetroArch instead.
-                self._fallback_retroarch()
+                cur = self.current or {}
+                if self._cached_url_used:
+                    # A cached googlevideo URL can expire (403): drop it and
+                    # re-resolve once before giving up on the in-app player.
+                    self._cached_url_used = False
+                    yt.clear_cached_streams(cur.get("id"), self.quality)
+                    self._pending_start = self.player.get_position()
+                    self._play_current()
+                else:
+                    # ffmpeg produced nothing (bad URL/codec): use RetroArch instead.
+                    self._fallback_retroarch()
             else:
                 self._advance_or_finish()
 

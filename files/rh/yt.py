@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -966,7 +967,23 @@ YT_VIDEO_CACHE_DIR = "/tmp/yt_cache"
 
 
 def resolve_ytdlp():
-    """Dynamically import yt_dlp module from app or sdcard bin."""
+    """Import yt_dlp, preferring the RAM-unzipped copy used by the player.
+
+    rh.yt_player already unzips bin/yt-dlp into /tmp/ytdlp_cache (tmpfs) so the
+    module imports without touching the zip; reusing that avoids importing from
+    a 3 MB zip on every call.
+    """
+    try:
+        from .yt_player import ensure_ytdlp_ready
+        ensure_ytdlp_ready()
+    except Exception:
+        pass
+    try:
+        import yt_dlp
+        return yt_dlp
+    except ImportError:
+        pass
+
     sdcard = os.environ.get("SDCARD_PATH", "/mnt/SDCARD")
     app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     candidates = [
@@ -1043,6 +1060,80 @@ def resolve_audio_stream(video_id: str) -> tuple:
 
 QUALITY_HEIGHTS = {"360": 360, "480": 480, "720": 720}
 
+# Stream-URL cache for the in-app player. A googlevideo URL stays valid for
+# hours and resolving one costs seconds of yt-dlp work, so results are cached in
+# RAM (tmpfs) per video+quality. The RetroArch handoff path has its own cache in
+# rh.yt_player; this one covers resolve_streams().
+_STREAM_CACHE_FILE = "/tmp/yt_streams_inapp.json"
+_STREAM_CACHE_TTL = 3 * 3600
+_STREAM_CACHE = {}
+_STREAM_CACHE_LOADED = False
+
+
+def _load_stream_cache():
+    global _STREAM_CACHE, _STREAM_CACHE_LOADED
+    _STREAM_CACHE_LOADED = True
+    try:
+        if os.path.exists(_STREAM_CACHE_FILE):
+            with open(_STREAM_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                now = time.time()
+                _STREAM_CACHE = {k: v for k, v in data.items()
+                                 if isinstance(v, dict) and v.get("exp", 0) > now}
+    except Exception:
+        _STREAM_CACHE = {}
+
+
+def _save_stream_cache():
+    try:
+        now = time.time()
+        fresh = {k: v for k, v in _STREAM_CACHE.items() if v.get("exp", 0) > now}
+        with open(_STREAM_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(fresh, f)
+    except Exception:
+        pass
+
+
+def get_cached_streams(video_id: str, quality: str = "360"):
+    """Cached resolve_streams() result for the in-app player, or None."""
+    if not video_id:
+        return None
+    global _STREAM_CACHE
+    if not _STREAM_CACHE_LOADED:
+        _load_stream_cache()
+    key = "%s|%s" % (video_id, quality)
+    entry = _STREAM_CACHE.get(key)
+    if entry and entry.get("exp", 0) > time.time() and entry.get("video_url"):
+        res = dict(entry)
+        res.pop("exp", None)
+        return res
+    return None
+
+
+def cache_streams(video_id: str, quality: str, res: dict):
+    """Store a resolve_streams() result so the next playback skips yt-dlp."""
+    if not video_id or not res or not res.get("video_url"):
+        return
+    entry = dict(res)
+    entry["exp"] = time.time() + _STREAM_CACHE_TTL
+    _STREAM_CACHE["%s|%s" % (video_id, quality)] = entry
+    _save_stream_cache()
+
+
+def clear_cached_streams(video_id: str, quality: str = None):
+    """Drop cached resolution(s) for a video (an expired URL must be re-resolved)."""
+    if not video_id:
+        return
+    if quality is None:
+        keys = [k for k in _STREAM_CACHE if k.startswith(video_id + "|")]
+    else:
+        keys = ["%s|%s" % (video_id, quality)]
+    for k in keys:
+        _STREAM_CACHE.pop(k, None)
+    if keys:
+        _save_stream_cache()
+
 
 def resolve_streams(video_id: str, quality: str = "360") -> dict:
     """Resolve video + audio stream URLs for the in-app player.
@@ -1051,6 +1142,11 @@ def resolve_streams(video_id: str, quality: str = "360") -> dict:
     progressive format carries both tracks (same URL for both); a DASH format
     returns separate video/audio URLs, which the two-process player handles.
     """
+    cached = get_cached_streams(video_id, quality)
+    if cached:
+        print(f"[rh.yt] stream cache hit for {video_id} ({quality}p)")
+        return cached
+
     yt_dlp = resolve_ytdlp()
     if not yt_dlp:
         return None
@@ -1058,13 +1154,22 @@ def resolve_streams(video_id: str, quality: str = "360") -> dict:
     h = QUALITY_HEIGHTS.get(str(quality), 360)
     yt_url = f"https://www.youtube.com/watch?v={video_id}"
     # Prefer H.264 + AAC: the device ffmpeg/player may lack AV1/VP9/Opus.
-    format_list = [
-        f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]",
-        f"bestvideo[height<={h}][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]",
-        f"bestvideo[height<={h}][ext=mp4]+bestaudio[ext=m4a]",
-        f"best[height<={h}][ext=mp4]",
-        "18/best[ext=mp4]/best",
-    ]
+    # Progressive format 18 carries both tracks in one request, so it is the
+    # fastest and most compatible target at 360p; higher qualities need the
+    # separate DASH video/audio pair.
+    if h <= 360:
+        format_list = [
+            "18",
+            f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]",
+            f"best[height<={h}][ext=mp4]",
+        ]
+    else:
+        format_list = [
+            f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]",
+            f"bestvideo[height<={h}][ext=mp4]+bestaudio[ext=m4a]",
+            f"best[height<={h}][ext=mp4]",
+            "18/best[ext=mp4]/best",
+        ]
     base_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -1093,7 +1198,13 @@ def resolve_streams(video_id: str, quality: str = "360") -> dict:
                     info = candidate
                     break
             except Exception as e:
-                print(f"[rh.yt] resolve_streams fmt '{fmt}' failed: {e}")
+                msg = str(e)
+                print(f"[rh.yt] resolve_streams fmt '{fmt}' failed: {msg}")
+                # No other format/parser can help with a dead or private video.
+                if any(t in msg for t in ("Video unavailable", "Private video",
+                                          "members-only", "has been removed",
+                                          "This video is not available")):
+                    return None
         if info:
             break
 
@@ -1118,13 +1229,15 @@ def resolve_streams(video_id: str, quality: str = "360") -> dict:
     if not video_url:
         return None
 
-    return {
+    res = {
         "video_url": video_url,
         "audio_url": audio_url,
         "title": info.get("title", video_id),
         "height": info.get("height") or h,
         "progressive": progressive,
     }
+    cache_streams(video_id, quality, res)
+    return res
 
 
 def get_cached_video_path(video_id: str) -> str:

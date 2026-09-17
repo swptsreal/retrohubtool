@@ -210,6 +210,7 @@ class InAppPlayer:
         self.error = ""
         self._w, self._h = target_size("360")
         self._start_pos = 0.0
+        self._local_pos = 0.0
         self._video_url = ""
         self._audio_url = ""
 
@@ -226,8 +227,6 @@ class InAppPlayer:
             self.error = "ffmpeg has no H.264 decoder"
             _log(self.error)
             return False
-        _log("start audio_only=%s quality=%s size=%dx%d start=%.1fs" %
-             (self.audio_only, quality, self._w, self._h, self._start_pos))
         try:
             info = sdl2.SDL_RendererInfo()
             if sdl2.SDL_GetRendererInfo(self.renderer, ctypes.byref(info)) == 0:
@@ -259,6 +258,9 @@ class InAppPlayer:
         self._got_upload = False
         self._upload_err_logged = False
         self._video_read = self._video_up = self._video_drop = 0
+        self._local_pos = 0.0
+        _log("start audio_only=%s quality=%s size=%dx%d start=%.1fs speed=%.2f" %
+             (self.audio_only, quality, self._w, self._h, self._start_pos, self.speed))
 
         try:
             sdl2.SDL_InitSubSystem(sdl2.SDL_INIT_AUDIO)
@@ -335,10 +337,20 @@ class InAppPlayer:
         self._frames.clear()
 
     def seek(self, pos):
-        """Pipe mode cannot seek; restart the stream from the beginning."""
-        _log("seek %.1fs requested; pipe mode restarts from 0" % max(0.0, float(pos)))
-        self._start_pos = 0.0
-        self.position = 0.0
+        """Restart the stream at *pos*.
+
+        The ffmpeg inputs are pipes, so nothing can be seeked in place: both
+        decoders are re-spawned with `-ss <pos>`, which makes ffmpeg drop
+        packets until the target timestamp (timestamps then restart at 0). The
+        playback clock is offset by *pos* so position/resume stay correct.
+        """
+        target = max(0.0, float(pos or 0.0))
+        if self.duration > 0:
+            target = min(target, max(0.0, self.duration - 1.0))
+        _log("seek %.1fs -> restart ffmpeg at that position" % target)
+        self._start_pos = target
+        self._local_pos = 0.0
+        self.position = target
         self._kill_procs()
         self._stop.clear()
         self._frames.clear()
@@ -404,11 +416,15 @@ class InAppPlayer:
                 pass
 
     def _spawn_audio(self, ff):
-        cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0", "-vn"]
+        cmd = [ff, "-hide_banner", "-loglevel", "error"]
+        if self._start_pos > 0.05:
+            cmd += ["-ss", "%.3f" % self._start_pos]
+        cmd += ["-f", "mp4", "-i", "pipe:0", "-vn"]
         if abs(self.speed - 1.0) > 0.01:
             cmd += ["-af", "atempo=%.3f" % self.speed]
         cmd += ["-f", "s16le", "-ar", str(AUDIO_RATE), "-ac", str(AUDIO_CHANNELS), "pipe:1"]
-        _log("audio: ffmpeg -f mp4 -i pipe:0 itag=%s" % _url_itag(self._audio_url))
+        _log("audio: ffmpeg -ss %.1f -f mp4 -i pipe:0 itag=%s" %
+             (self._start_pos, _url_itag(self._audio_url)))
         try:
             self.audio_err = open("/tmp/rh_ffmpeg_a.log", "ab")
         except Exception:
@@ -425,10 +441,13 @@ class InAppPlayer:
         vf = "fps=%d,scale=%d:%d:flags=fast_bilinear" % (FPS, self._w, self._h)
         if abs(self.speed - 1.0) > 0.01:
             vf = "setpts=PTS/%.3f,%s" % (self.speed, vf)
-        cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0",
-               "-an", "-vf", vf, "-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"]
-        _log("video: ffmpeg -f mp4 -i pipe:0 itag=%s size=%dx%d" %
-             (_url_itag(self._video_url), self._w, self._h))
+        cmd = [ff, "-hide_banner", "-loglevel", "error"]
+        if self._start_pos > 0.05:
+            cmd += ["-ss", "%.3f" % self._start_pos]
+        cmd += ["-f", "mp4", "-i", "pipe:0",
+                "-an", "-vf", vf, "-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"]
+        _log("video: ffmpeg -ss %.1f -f mp4 -i pipe:0 itag=%s size=%dx%d" %
+             (self._start_pos, _url_itag(self._video_url), self._w, self._h))
         try:
             self.video_err = open("/tmp/rh_ffmpeg_v.log", "ab")
         except Exception:
@@ -442,6 +461,14 @@ class InAppPlayer:
         self._threads.append(t)
 
     def _kill_procs(self):
+        # Close stdin first so a feeder blocked in write() wakes up instead of
+        # writing into a dead pipe.
+        for p in (self.video_proc, self.audio_proc):
+            try:
+                if p and p.stdin:
+                    p.stdin.close()
+            except Exception:
+                pass
         for p in (self.video_proc, self.audio_proc):
             try:
                 if p and p.poll() is None:
@@ -458,12 +485,17 @@ class InAppPlayer:
                 pass
         self.audio_err = None
         self.video_err = None
+        # Keep the threads that are still winding down tracked: a respawn
+        # (seek/quality change) must not orphan a feeder per restart.
+        alive = []
         for t in self._threads:
             try:
-                t.join(timeout=0.5)
+                t.join(timeout=1.0)
             except Exception:
                 pass
-        self._threads = []
+            if t.is_alive():
+                alive.append(t)
+        self._threads = alive
 
     # ------------------------------------------------------------------
     # Reader threads
@@ -557,28 +589,34 @@ class InAppPlayer:
     # ------------------------------------------------------------------
     # Clock / sync
     # ------------------------------------------------------------------
-    def _audio_pos(self):
+    def _local_clock(self):
+        """Seconds of decoded output since the last spawn (0-based)."""
         try:
             queued = sdl_audio.SDL_GetQueuedAudioSize(self.audio_dev)
         except Exception:
             queued = 0
         played = max(0, self._audio_fed - queued)
-        return self._start_pos + played / float(AUDIO_BYTES_PER_SEC)
+        return played / float(AUDIO_BYTES_PER_SEC)
 
     def update(self):
         """Advance the clock and upload the next due video frame."""
         if self.paused:
             return
-        self.position = self._audio_pos()
+        # Audio is the master clock. Both ffmpeg outputs are in output time
+        # (0-based after `-ss`, video pre-scaled by setpts for speed), so sync
+        # compares frames against the local clock while the exposed position
+        # adds the seek offset and the speed factor.
+        self._local_pos = self._local_clock()
+        self.position = self._start_pos + self._local_pos * self.speed
         if self.audio_only or not self.texture:
             return
-        audio_pos = self.position
+        clock_pos = self._local_pos
         due = None
         with self._frame_lock:
-            while self._frames and self._frames[0][0] < audio_pos - SYNC_DROP:
+            while self._frames and self._frames[0][0] < clock_pos - SYNC_DROP:
                 self._frames.popleft()
                 self._video_drop += 1
-            if self._frames and self._frames[0][0] <= audio_pos + SYNC_HOLD:
+            if self._frames and self._frames[0][0] <= clock_pos + SYNC_HOLD:
                 due = self._frames.popleft()[1]
         if due is not None:
             ok = False
@@ -594,7 +632,7 @@ class InAppPlayer:
                             nz += 1
                     _log("video: first RGBA upload rc=%s ok=%s audio_pos=%.2f "
                          "px0=%s mid=%s rgb_nz=%d err=%r" %
-                         (rc, ok, audio_pos, due[:4].hex(),
+                         (rc, ok, clock_pos, due[:4].hex(),
                           due[len(due) // 2:len(due) // 2 + 4].hex(), nz,
                           sdl2.SDL_GetError().decode()))
             except Exception as e:
@@ -605,7 +643,7 @@ class InAppPlayer:
                 self._video_up += 1
                 if self._video_up % 300 == 0:
                     _log("video: up=%d drop=%d pos=%.2f queued=%d" %
-                         (self._video_up, self._video_drop, audio_pos, len(self._frames)))
+                         (self._video_up, self._video_drop, clock_pos, len(self._frames)))
 
     def produced_data(self) -> bool:
         """True once any audio or video bytes arrived (i.e. it actually played)."""
@@ -643,8 +681,13 @@ class InAppPlayer:
         self.volume = max(0, min(100, int(volume)))
 
     def set_speed(self, speed):
-        self.speed = max(0.5, min(2.0, float(speed)))
-        self.seek(self.position)
+        new = max(0.5, min(2.0, float(speed)))
+        if abs(new - self.speed) < 0.01:
+            return
+        pos = self.get_position()
+        self.speed = new
+        _log("speed %.2fx -> restart at %.1fs" % (self.speed, pos))
+        self.seek(pos)
 
     def get_position(self) -> float:
         return self.position
