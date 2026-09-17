@@ -29,7 +29,7 @@ class ExitModal(BaseModal):
         btn_right = inputs.get("btn_right")
 
         if btn_b:
-            self.close()
+            self._dismiss()
             return True
 
         if btn_left or btn_right:
@@ -38,11 +38,23 @@ class ExitModal(BaseModal):
 
         if btn_a:
             if self.selected_btn == 0:
-                self.engine.running = False
-            self.close()
+                # Close first, then flag the exit: the engine loop then leaves
+                # without rendering another frame (and no modal can reopen).
+                self._dismiss()
+                if self.engine:
+                    self.engine.running = False
+            else:
+                self._dismiss()
             return True
 
         return True
+
+    def _dismiss(self):
+        """Close through the engine so active_modal is cleared, not left stale."""
+        if self.engine:
+            self.engine.close_modal()
+        else:
+            self.close()
 
     def render(self, engine):
         if not self.active:

@@ -1,12 +1,12 @@
 {
-  "version": "3.0",
+  "version": "3.1",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T14:17:19+0700",
+  "built": "2026-09-17T15:46:25+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.0: Đại tu YouTube (trang chi tiết, hàng đợi, trình phát trong app, chỉ nghe nhạc), cấu hình theo biến môi trường, kênh OTA qua Cloudflare Worker.",
-    "en": "v3.0: YouTube overhaul (watch page, queue, in-app player, audio-only), env-based config, Cloudflare Worker OTA channel."
+    "vi": "Bản 3.1: Cập nhật bot Telegram mới để gửi nhật ký (log) và thông báo; sửa lỗi thoát ứng dụng (đóng modal, thoát sạch, timeout self-heal).",
+    "en": "v3.1: New Telegram bot for log upload and notifications; robust app exit (modal close, clean shutdown, self-heal timeout)."
   },
   "remove": [
     "app.pyc",
@@ -373,8 +373,8 @@
     },
     {
       "path": "launch.sh",
-      "size": 10338,
-      "sha256": "f98096d2caf13a47dd6c5441d87c63549604d090fbebb18755b148f53aff37ec"
+      "size": 10358,
+      "sha256": "56a79df60140342d8ea114a27975a7cbc169089459eac90de44610293dfa9ba0"
     },
     {
       "path": "led_daemon.py",
@@ -433,8 +433,8 @@
     },
     {
       "path": "rh/config.py",
-      "size": 1693,
-      "sha256": "d16d3ba8ad42bfc17c89ba0336fb856ba35fe00f7262803c5e94fa51560a70e8"
+      "size": 1694,
+      "sha256": "8c42514e7f744023dbab27d0c28726f41be9dae60a5f45f474a1f95f100d7798"
     },
     {
       "path": "rh/corepicker.py",
@@ -453,8 +453,8 @@
     },
     {
       "path": "rh/engine.py",
-      "size": 18652,
-      "sha256": "5d3fe1bcb34aed67807db2480bbeb159100483f56388f9d5c3947c100faf262c"
+      "size": 19233,
+      "sha256": "7635b763c03f7a642cb2b93ad6adbf4b39881f44a7d2db317460bc5bc9bc0252"
     },
     {
       "path": "rh/env.py",
@@ -548,8 +548,8 @@
     },
     {
       "path": "rh/modals/common.py",
-      "size": 16312,
-      "sha256": "a531a876d3f4a81e2518b20f4fda04d111c3f2efa1d29e9be96fdad574a8346f"
+      "size": 16773,
+      "sha256": "b317cdc4230dbbbef99d9ad4c149f4d49d80ec5df40138f7a651780f61eecfed"
     },
     {
       "path": "rh/modals/game_action.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 854,
-      "sha256": "cea652fe422d90742d09102e9a867f9d8c22e393269ee21877a8842c52b5a0a6"
+      "sha256": "63d0edd48b6117ca2c1f97e011ef2805b886a3e2924ef939b784624b66798349"
     },
     {
       "path": "rh/yt.py",
