@@ -36,6 +36,7 @@ from rh.screens.store import StoreScreen
 from rh.screens.youtube import YoutubeScreen
 from rh.screens.watch import WatchScreen
 from rh.screens.queue import QueueScreen
+from rh.screens.player import PlayerScreen
 from rh.screens.keyboard import VirtualKeyboardScreen
 from rh.screens.network import NetworkScreen
 from rh.screens.settings import SettingsScreen
@@ -71,6 +72,7 @@ def main():
     engine.register_screen("youtube", YoutubeScreen(engine))
     engine.register_screen("watch", WatchScreen(engine))
     engine.register_screen("queue", QueueScreen(engine))
+    engine.register_screen("player", PlayerScreen(engine))
     engine.register_screen("keyboard", VirtualKeyboardScreen(engine))
     engine.register_screen("network", NetworkScreen(engine))
     engine.register_screen("settings", SettingsScreen(engine))

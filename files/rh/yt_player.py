@@ -489,7 +489,10 @@ def run_session(session_path: str):
         log("Session rong hoac khong doc duoc, khong co gi de phat.")
         return
 
-    backend = get_backend()
+    # This is the handoff process: the app has exited, so playback must go
+    # through an external player. The in-app backend only works inside the app
+    # process (rh.screens.player) and cannot run here.
+    backend = get_backend("retroarch")
     log(f"Bat dau phien phat: {len(sess.queue)} video, bat dau tu #{sess.index + 1}")
 
     while True:

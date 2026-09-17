@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """YouTube Watch page: video details, actions and related videos.
 
-Shown before playback instead of handing straight to the player. Play builds a
-playback session (see rh.playback) and hands off to the yt_player runner, so
-the whole queue keeps playing without returning to the app between videos.
+Shown before playback. Play either opens the in-app player (when the backend
+supports an inline UI) or hands off to the RetroArch runner, so the whole queue
+keeps playing without returning to the app between videos.
 """
 
 import os
@@ -12,14 +12,20 @@ import threading
 from .. import playback, state, yt
 from ..i18n import tr
 from ..paths import YT_CACHE_DIR
-from ..player import launch_session
+from ..player import get_backend, launch_session
 from .base import BaseScreen
+
+QUALITY_CYCLE = ("360", "480", "720")
+
+# Metadata is fetched over the network; keep it for re-visits so opening the
+# same video again is instant (and to avoid parsing the large `next` response
+# repeatedly, which stalls the render loop).
+_META_CACHE = {}
+_META_CACHE_MAX = 30
 
 
 class WatchScreen(BaseScreen):
     """Detail page for one video: metadata, actions, related list."""
-
-    ACTIONS = 4  # play, save, add-to-queue, audio-only
 
     def __init__(self, engine=None):
         super().__init__(engine)
@@ -36,6 +42,12 @@ class WatchScreen(BaseScreen):
         self.scroll = 0
         self.resume_pos = 0.0
         self.audio_only = False
+        self.quality = "360"
+        self.action_ids = []
+        self._title_key = None
+        self._title_lines = []
+        self._desc_key = None
+        self._desc_lines = []
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -52,19 +64,37 @@ class WatchScreen(BaseScreen):
         self.related = []
         self.focus = 0
         self.scroll = 0
-        self.audio_only = bool(params.get("audio_only", False))
+        self.quality = str(getattr(state, "video_quality", "360"))
+        self.audio_only = bool(params.get("audio_only", getattr(state, "audio_only_default", False)))
         dur = playback.duration_seconds(self.video.get("duration", ""))
         self.resume_pos = playback.resume_position(self.video_id, dur)
+
+        caps = get_backend().capabilities
+        self.action_ids = ["play", "save", "queue", "audio"]
+        if caps.get("quality_select"):
+            self.action_ids.append("quality")
+
         self.loading = bool(self.video_id)
         if self.video_id:
             threading.Thread(target=self._bg_fetch, daemon=True).start()
 
     def _bg_fetch(self):
+        cached = _META_CACHE.get(self.video_id)
+        if cached is not None:
+            self.meta = cached
+            self.related = cached.get("related", [])
+            self.loading = False
+            return
         try:
-            self.meta = yt.fetch_watch_metadata(self.video_id)
+            meta = yt.fetch_watch_metadata(self.video_id)
         except Exception:
-            self.meta = None
-        self.related = (self.meta or {}).get("related", []) if self.meta else []
+            meta = None
+        self.meta = meta
+        self.related = (meta or {}).get("related", []) if meta else []
+        if meta:
+            if len(_META_CACHE) >= _META_CACHE_MAX:
+                _META_CACHE.clear()
+            _META_CACHE[self.video_id] = meta
         self.loading = False
 
     def get_header_title(self):
@@ -89,7 +119,11 @@ class WatchScreen(BaseScreen):
             context=self.context,
             audio_only=self.audio_only,
         )
-        launch_session(self.engine, sess)
+        if get_backend().capabilities.get("inline_ui"):
+            playback.save_session(sess)
+            self.engine.push_screen("player", {"session": sess, "quality": self.quality})
+        else:
+            launch_session(self.engine, sess)
 
     def _toggle_favorite(self):
         favs = yt.load_favorites()
@@ -109,6 +143,19 @@ class WatchScreen(BaseScreen):
         label = tr("yt_on") if self.audio_only else tr("yt_off")
         self.engine.toast(f"{tr('yt_audio_only')}: {label}")
 
+    def _cycle_quality(self):
+        try:
+            i = QUALITY_CYCLE.index(self.quality)
+        except ValueError:
+            i = 0
+        self.quality = QUALITY_CYCLE[(i + 1) % len(QUALITY_CYCLE)]
+        state.video_quality = self.quality
+        try:
+            state.save_settings()
+        except Exception:
+            pass
+        self.engine.toast("%s: %sp" % (tr("yt_pl_quality"), self.quality))
+
     def _open_related(self, idx):
         if 0 <= idx < len(self.related):
             self.engine.push_screen("watch", {
@@ -120,16 +167,19 @@ class WatchScreen(BaseScreen):
             })
 
     def _activate(self):
-        if self.focus == 0:
+        action = self.action_ids[self.focus] if self.focus < len(self.action_ids) else ""
+        if action == "play":
             self._start_playback()
-        elif self.focus == 1:
+        elif action == "save":
             self._toggle_favorite()
-        elif self.focus == 2:
+        elif action == "queue":
             self._add_to_queue()
-        elif self.focus == 3:
+        elif action == "audio":
             self._toggle_audio_only()
+        elif action == "quality":
+            self._cycle_quality()
         else:
-            self._open_related(self.focus - self.ACTIONS)
+            self._open_related(self.focus - len(self.action_ids))
 
     # ------------------------------------------------------------------
     # Input
@@ -142,7 +192,8 @@ class WatchScreen(BaseScreen):
             self.engine.push_screen("queue")
             return True
 
-        total = self.ACTIONS + len(self.related)
+        n_actions = len(self.action_ids)
+        total = n_actions + len(self.related)
         if inputs.get("btn_up"):
             self.focus = (self.focus - 1) % total
         elif inputs.get("btn_down"):
@@ -152,7 +203,7 @@ class WatchScreen(BaseScreen):
             return True
 
         visible = self._visible_rows()
-        rel = self.focus - self.ACTIONS
+        rel = self.focus - n_actions
         if rel < 0:
             self.scroll = 0
         elif rel < self.scroll:
@@ -195,7 +246,10 @@ class WatchScreen(BaseScreen):
         mw = state.SCREEN_W - mx - pad
         my = ty
         title = meta.get("title") or self.video.get("title", "YouTube")
-        for line in engine.wrap_text_to_width(title, engine.font_item, mw, max_lines=3):
+        if self._title_key != title:
+            self._title_lines = engine.wrap_text_to_width(title, engine.font_item, mw, max_lines=3)
+            self._title_key = title
+        for line in self._title_lines:
             engine.draw_text(line, engine.font_item, mx, my, 255, 255, 255)
             my += 30
         channel = meta.get("channel") or self.video.get("channel", "")
@@ -216,7 +270,10 @@ class WatchScreen(BaseScreen):
         if desc:
             engine.draw_text(tr("yt_watch_desc"), engine.font_footer, mx, my + 6, 120, 145, 180)
             my += 26
-            for line in engine.wrap_text_to_width(desc, engine.font_footer, mw, max_lines=4):
+            if self._desc_key != desc:
+                self._desc_lines = engine.wrap_text_to_width(desc, engine.font_footer, mw, max_lines=4)
+                self._desc_key = desc
+            for line in self._desc_lines:
                 engine.draw_text(line, engine.font_footer, mx, my, 160, 180, 205)
                 my += 24
         elif self.loading:
@@ -226,18 +283,21 @@ class WatchScreen(BaseScreen):
 
         # Action buttons
         btn_y = ty + thumb_h + 18
-        audio_state = tr("yt_on") if self.audio_only else tr("yt_off")
-        btn_labels = [
-            tr("yt_watch_play"),
-            tr("yt_watch_save"),
-            tr("yt_watch_queue_add"),
-            f"{tr('yt_audio_only')}: {audio_state}",
-        ]
-        btn_w = 224
         btn_h = 52
         gap = 12
+        n = len(self.action_ids)
+        avail = state.SCREEN_W - pad * 2
+        btn_w = (avail - (n - 1) * gap) // max(1, n)
+        audio_state = tr("yt_on") if self.audio_only else tr("yt_off")
+        labels = {
+            "play": tr("yt_watch_play"),
+            "save": tr("yt_watch_save"),
+            "queue": tr("yt_watch_queue_add"),
+            "audio": f"{tr('yt_audio_only')}: {audio_state}",
+            "quality": f"{tr('yt_pl_quality')}: {self.quality}p",
+        }
         bx = pad
-        for i, label in enumerate(btn_labels):
+        for i, aid in enumerate(self.action_ids):
             sel = (self.focus == i)
             if sel:
                 engine.fill_rect(bx, btn_y, btn_w, btn_h, 30, 46, 78, 255)
@@ -245,7 +305,7 @@ class WatchScreen(BaseScreen):
             else:
                 engine.fill_rect(bx, btn_y, btn_w, btn_h, 19, 26, 42, 255)
                 engine.draw_rect(bx, btn_y, btn_w, btn_h, 40, 54, 85, 255, thickness=1)
-            engine.draw_text(label, engine.font_badge, bx + btn_w // 2, btn_y + btn_h // 2,
+            engine.draw_text(labels[aid], engine.font_badge, bx + btn_w // 2, btn_y + btn_h // 2,
                              255, 255, 255, center_x=True, center_y=True)
             bx += btn_w + gap
 
@@ -261,7 +321,7 @@ class WatchScreen(BaseScreen):
         for i, rv in enumerate(rel):
             real = self.scroll + i
             ry = list_top + i * row_h
-            sel = (self.focus == self.ACTIONS + real)
+            sel = (self.focus == n + real)
             if sel:
                 engine.fill_rect(pad, ry, state.SCREEN_W - pad * 2, row_h - 8, 28, 44, 75, 255)
                 engine.draw_rect(pad, ry, state.SCREEN_W - pad * 2, row_h - 8, 230, 33, 23, 255, thickness=2)

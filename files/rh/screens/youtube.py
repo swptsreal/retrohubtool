@@ -28,6 +28,7 @@ class YoutubeScreen(BaseScreen):
         self.fav_ids = set()
         self.has_more = False
         self.loading_more = False
+        self.load_error = ""
 
     def build_tabs(self, select_tab: str = None):
         """Build tab list dynamically: puts '★ Yêu thích' first if favorites exist."""
@@ -49,6 +50,13 @@ class YoutubeScreen(BaseScreen):
             self.active_query_idx = self.recent_queries.index(select_tab)
         elif self.active_query_idx >= len(self.recent_queries):
             self.active_query_idx = 0
+
+    def _switch_tab(self, delta):
+        n = len(self.recent_queries)
+        if n <= 1:
+            return
+        self.active_query_idx = (self.active_query_idx + delta) % n
+        self.load_current_tab()
 
     def on_enter(self, params=None):
         self.build_tabs()
@@ -75,6 +83,7 @@ class YoutubeScreen(BaseScreen):
         self.loading = True
         self.has_more = False
         self.loading_more = False
+        self.load_error = ""
         self.videos = []
         self.selected_idx = 0
         self.scroll_row = 0
@@ -96,6 +105,8 @@ class YoutubeScreen(BaseScreen):
             except Exception as e:
                 self.engine.toast(f"Lỗi tải YouTube: {e}")
             self.loading = False
+            if not self.videos:
+                self.load_error = yt.get_last_error()
             if cur_q not in ("★ Yêu thích", "Yêu thích", "Trending", "Lịch sử"):
                 self.has_more = bool(yt.get_continuation_token(cur_q))
 
@@ -142,6 +153,7 @@ class YoutubeScreen(BaseScreen):
             ("A", "Xem video", (0, 230, 150), (220, 225, 235), True),
             ("X", "Tìm kiếm", (0, 210, 255), (220, 225, 235), True),
             ("Y", "Yêu thích", (255, 200, 0), (220, 225, 235), True),
+            ("SELECT", tr("yt_retry"), (0, 210, 255), (220, 225, 235), True),
             ("B", tr("footer_back"), (255, 75, 75), (220, 225, 235), False),
         ]
 
@@ -162,18 +174,15 @@ class YoutubeScreen(BaseScreen):
             return True
 
         if btn_l1:
-            if self.active_query_idx > 0:
-                self.active_query_idx -= 1
-            else:
-                self.active_query_idx = len(self.recent_queries) - 1
-            self.load_current_tab()
+            self._switch_tab(-1)
             return True
 
         if btn_r1:
-            if self.active_query_idx < len(self.recent_queries) - 1:
-                self.active_query_idx += 1
-            else:
-                self.active_query_idx = 0
+            self._switch_tab(1)
+            return True
+
+        # [SELECT] reload the current tab (retry after a network error)
+        if inputs.get("btn_f1"):
             self.load_current_tab()
             return True
 
@@ -228,6 +237,14 @@ class YoutubeScreen(BaseScreen):
 
         total_v = len(self.videos)
         if total_v == 0:
+            # Nothing to navigate: let the D-pad change tabs so the user is not
+            # stuck on an empty tab.
+            if btn_left:
+                self._switch_tab(-1)
+                return True
+            if btn_right:
+                self._switch_tab(1)
+                return True
             return False
 
         cols = 3
@@ -348,8 +365,16 @@ class YoutubeScreen(BaseScreen):
 
         if not self.videos:
             cur_tab = self.recent_queries[self.active_query_idx] if self.active_query_idx < len(self.recent_queries) else ""
-            msg = "CHƯA CÓ VIDEO YÊU THÍCH (BẤM [Y] ĐỂ THÊM)" if cur_tab in ("★ Yêu thích", "Yêu thích") else "KHÔNG CÓ VIDEO NÀO"
-            engine.draw_text(msg, engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 140, 160, 190, center_x=True, center_y=True)
+            if self.load_error:
+                engine.draw_text(tr(self.load_error), engine.font_item, state.SCREEN_W // 2,
+                                 content_y + content_h // 2 - 20, 240, 150, 120,
+                                 center_x=True, center_y=True)
+                engine.draw_text(tr("yt_retry_hint"), engine.font_footer, state.SCREEN_W // 2,
+                                 content_y + content_h // 2 + 26, 140, 160, 190,
+                                 center_x=True, center_y=True)
+            else:
+                msg = "CHƯA CÓ VIDEO YÊU THÍCH (BẤM [Y] ĐỂ THÊM)" if cur_tab in ("★ Yêu thích", "Yêu thích") else "KHÔNG CÓ VIDEO NÀO"
+                engine.draw_text(msg, engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 140, 160, 190, center_x=True, center_y=True)
             return
 
         cols = 3

@@ -11,7 +11,7 @@ session logic.
 
 import os
 
-from . import playback
+from . import playback, state
 from .paths import APP_DIR, SDCARD_PATH, YT_SESSION_FILE
 
 
@@ -58,10 +58,48 @@ class RetroArchBackend(PlayerBackend):
         return play_video(video.get("id"), audio_only=audio_only)
 
 
-def get_backend(name="retroarch") -> PlayerBackend:
+class InAppBackend(PlayerBackend):
+    """Playback inside the app process (ffmpeg + SDL2, see rh.inapp_player).
+
+    The blocking loop lives in the PlayerScreen, not here: this backend only
+    advertises what it can do so the UI knows to open the in-app player.
+    """
+
+    name = "inapp"
+    capabilities = {
+        "seek_absolute": True,
+        "audio_only": True,
+        "quality_select": True,
+        "speed": True,
+        "inline_ui": True,
+    }
+
+    def play(self, video, start=0.0, audio_only=False, duration=0.0, session=None):
+        raise NotImplementedError("in-app playback runs in rh.screens.player")
+
+
+def inapp_available() -> bool:
+    try:
+        from . import inapp_player
+        if not inapp_player.available():
+            return False
+        status = inapp_player.h264_status()
+        if status is None:
+            # Probe off the main thread; optimistically allow in-app for now.
+            inapp_player.precompute_decoder_check()
+            return True
+        return bool(status)
+    except Exception:
+        return False
+
+
+def get_backend(name=None) -> PlayerBackend:
+    name = (name or getattr(state, "player_backend", "auto") or "auto").lower()
     if name == "retroarch":
         return RetroArchBackend()
-    return RetroArchBackend()
+    if name == "inapp":
+        return InAppBackend()
+    return InAppBackend() if inapp_available() else RetroArchBackend()
 
 
 BACKEND = RetroArchBackend()

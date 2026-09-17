@@ -26,12 +26,17 @@ class SettingsScreen(BaseScreen):
     def refresh_items(self):
         v_mode_lbl = "Lưới (Grid)" if state.downloaded_view_mode == "grid" else "Danh sách (List)"
         lang_lbl = "Tiếng Việt" if state.current_lang == "VI" else "English"
+        backend_lbl = {"auto": tr("be_auto"), "inapp": tr("be_inapp"),
+                       "retroarch": tr("be_retroarch")}.get(state.player_backend, tr("be_auto"))
 
         self.items = [
             {"id": "lang_toggle", "title": tr("set_lang_title"), "label": lang_lbl},
             {"id": "view_mode_toggle", "title": tr("set_view_title"), "label": v_mode_lbl},
             {"id": "wifi_awake", "title": tr("set_wifi_awake"), "type": "toggle", "state": state.wifi_awake},
             {"id": "auto_update", "title": tr("set_auto_upd"), "type": "toggle", "state": state.auto_update},
+            {"id": "player_backend", "title": tr("set_player_backend"), "label": backend_lbl},
+            {"id": "video_quality", "title": tr("set_video_quality"), "label": f"{state.video_quality}p"},
+            {"id": "audio_only_default", "title": tr("set_audio_only"), "type": "toggle", "state": state.audio_only_default},
             {"id": "check_update", "title": tr("set_check_upd"), "label": f"v{APP_VERSION}"},
             {"id": "logging", "title": tr("set_logging"), "type": "toggle", "state": state.enable_logging},
             {"id": "device_id", "title": tr("set_dev_id"), "label": state.device_id},
@@ -106,6 +111,24 @@ class SettingsScreen(BaseScreen):
                 self.refresh_items()
             elif it_id == "auto_update":
                 state.auto_update = not state.auto_update
+                state.save_settings()
+                self.refresh_items()
+            elif it_id == "player_backend":
+                cycle = {"auto": "inapp", "inapp": "retroarch", "retroarch": "auto"}
+                state.player_backend = cycle.get(state.player_backend, "auto")
+                state.save_settings()
+                self.refresh_items()
+            elif it_id == "video_quality":
+                q = ("360", "480", "720")
+                try:
+                    qi = q.index(state.video_quality)
+                except ValueError:
+                    qi = 0
+                state.video_quality = q[(qi + 1) % len(q)]
+                state.save_settings()
+                self.refresh_items()
+            elif it_id == "audio_only_default":
+                state.audio_only_default = not state.audio_only_default
                 state.save_settings()
                 self.refresh_items()
             elif it_id == "logging":
