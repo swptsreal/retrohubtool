@@ -46,6 +46,7 @@ from rh.paths import (
     YT_FEED_FALLBACK_FILE,
     YT_FAVORITES_FILE,
     YT_FAVORITES_FALLBACK_FILE,
+    SDCARD_PATH,
 )
 from .neterrors import classify_error as _classify_error
 
@@ -1059,6 +1060,69 @@ def resolve_audio_stream(video_id: str) -> tuple:
 
 
 QUALITY_HEIGHTS = {"360": 360, "480": 480, "720": 720}
+
+def ytdlp_zip_path() -> str:
+    """Path of the bundled yt-dlp package (a zip the app imports directly)."""
+    sdcard = os.environ.get("SDCARD_PATH", "/mnt/SDCARD")
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for c in (os.path.join(app_dir, "bin", "yt-dlp"),
+              os.path.join(sdcard, "Apps", "RetroHub", "bin", "yt-dlp"),
+              os.path.join(sdcard, ".retrohub", "bin", "yt-dlp")):
+        if os.path.exists(c):
+            return c
+    return ""
+
+
+def resolve_info_json(video_id: str, quality: str = "360", path: str = None) -> str:
+    """Dump yt-dlp's metadata for a video so a section can be fetched later.
+
+    yt-dlp needs the format/fragment metadata to download a *time range*; loading
+    this dump (`--load-info-json`) skips a second extraction on every seek, which
+    is what makes section-based seeking quick. Returns the file path or "".
+    """
+    yt_dlp = resolve_ytdlp()
+    if not yt_dlp or not video_id:
+        return ""
+    # Kept on the card (not tmpfs) so resuming the same video later does not have
+    # to run the extractor again. The URLs inside expire, so re-dump after an
+    # hour; the fragment metadata itself does not change.
+    path = path or os.path.join(SDCARD_PATH, ".retrohub", "cache",
+                                "yt_info_%s.json" % video_id)
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 1024:
+            if time.time() - os.path.getmtime(path) < 3600:
+                return path
+    except Exception:
+        pass
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except Exception:
+        pass
+    h = QUALITY_HEIGHTS.get(str(quality), 360)
+    yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+        "skip_download": True,
+        "check_formats": False,
+        "format": (f"bestvideo[height<={h}][vcodec^=avc1]+"
+                   f"bestaudio[acodec^=mp4a]/bestvideo[height<={h}]+bestaudio/"
+                   f"best[height<={h}]/18/best"),
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(yt_url, download=False)
+            data = ydl.sanitize_info(info)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        print(f"[rh.yt] info dump: {path} ({os.path.getsize(path)} bytes)")
+        return path
+    except Exception as e:
+        print(f"[rh.yt] info dump error for {video_id}: {e}")
+        return ""
+
 
 # Stream-URL cache for the in-app player. A googlevideo URL stays valid for
 # hours and resolving one costs seconds of yt-dlp work, so results are cached in

@@ -48,6 +48,7 @@ class PlayerScreen(BaseScreen):
         self._seek_deadline = 0.0
         self._last_watched_pos = -1e9
         self._cached_url_used = False
+        self._pending_res = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -68,6 +69,7 @@ class PlayerScreen(BaseScreen):
     def on_exit(self):
         self._save_progress(force=True)
         self._seek_target = None
+        self._pending_res = None
         self._stop_player()
 
     def get_header_title(self):
@@ -100,7 +102,14 @@ class PlayerScreen(BaseScreen):
         self._seek_target = None
         self._last_watched_pos = -1e9
         self._cached_url_used = False
-        self.status = tr("yt_pl_buffering")
+        self._pending_res = None
+        if start > 1.0:
+            # Resuming: a pipe cannot be seeked, so the decoders re-read the
+            # stream from the start and drop everything before the target.
+            self.status = "%s %s" % (tr("yt_pl_resume"),
+                                     playback.format_seconds(start))
+        else:
+            self.status = tr("yt_pl_buffering")
         self.resolving = True
         self._stop_player()
         threading.Thread(target=self._bg_resolve, args=(v, start), daemon=True).start()
@@ -114,22 +123,29 @@ class PlayerScreen(BaseScreen):
             res = yt.resolve_streams(v.get("id"), self.quality)
         except Exception as e:
             print(f"[player] resolve error: {e}")
-        if self._leaving:
-            return
-        if not res:
-            # In-app cannot resolve this video: fall back to RetroArch rather
-            # than skipping through the whole queue.
-            self._fallback_retroarch(tr("yt_err_play"))
-            return
-        self._cached_url_used = cached
-        self._start_player(res, start)
+        # This runs on a worker thread. SDL textures, the audio device and the
+        # renderer may only be touched from the thread that owns the renderer:
+        # a texture created off that thread is never filled by GL and the video
+        # shows up as a black screen (with audio still playing). So only hand
+        # the result over - update() starts the player on the main thread.
+        self._pending_res = (res, start, cached)
 
     def _start_player(self, res, start):
         from ..inapp_player import InAppPlayer
         player = InAppPlayer(self.engine.renderer)
-        ok = player.start(res.get("video_url"), res.get("audio_url"), start_pos=start,
-                          audio_only=self.session.audio_only, quality=self.quality,
-                          duration=self.duration)
+        try:
+            ok = player.start(res.get("video_url"), res.get("audio_url"), start_pos=start,
+                              audio_only=self.session.audio_only, quality=self.quality,
+                              duration=self.duration, video_id=(self.current or {}).get("id"))
+        except Exception as e:
+            # Never let a media-path exception escape into the engine loop: it
+            # would kill the whole app instead of just falling back.
+            try:
+                from ..yt_player import log as _ytlog
+                _ytlog("in-app start failed: %r" % e)
+            except Exception:
+                pass
+            ok = False
         if not ok:
             self._fallback_retroarch()
             return
@@ -145,6 +161,19 @@ class PlayerScreen(BaseScreen):
             except Exception:
                 pass
             self.player = None
+
+    def _player_error(self, exc):
+        """Log an in-app player failure and hand the session to RetroArch."""
+        try:
+            from ..yt_player import log as _ytlog
+            _ytlog("in-app player error: %r" % exc)
+        except Exception:
+            pass
+        self._stop_player()
+        if not self._fallback_done:
+            self._fallback_retroarch(str(exc))
+        else:
+            self._finish_session()
 
     def _fallback_retroarch(self, reason=""):
         """Hand the session to the RetroArch runner (the proven path)."""
@@ -286,18 +315,55 @@ class PlayerScreen(BaseScreen):
     # Update
     # ------------------------------------------------------------------
     def update(self, dt):
+        # Start playback on the main thread once resolving finished (see
+        # _bg_resolve for why it cannot happen on the worker thread).
+        if self._pending_res is not None:
+            res, start, cached = self._pending_res
+            self._pending_res = None
+            if self._leaving:
+                return
+            if not res:
+                # In-app cannot resolve this video: fall back to RetroArch
+                # rather than skipping through the whole queue.
+                self._fallback_retroarch(tr("yt_err_play"))
+                return
+            self._cached_url_used = cached
+            self._start_player(res, start)
+            return
         if not self.player:
             return
         # Apply a pending seek once the user stops pressing left/right.
         if self._seek_target is not None and time.time() >= self._seek_deadline:
             target = self._seek_target
             self._seek_target = None
-            self.player.seek(target)
-            self.status = ""
+            try:
+                self.player.seek(target)
+            except Exception as e:
+                self._player_error(e)
+                return
+            if getattr(self.player, "seek_note", "") == "restart":
+                # Backward seek: the stream is read again from the beginning.
+                self.status = tr("yt_pl_seeking_back")
+            else:
+                self.status = ""
             self._overlay_until = time.time() + 2
-        self.player.update()
+        try:
+            self.player.update()
+        except Exception as e:
+            self._player_error(e)
+            return
         if self.player.error:
             self.status = self.player.error
+        # Waiting for the first frame of a seek/resume: show how far the
+        # decoders have got, so a pipe re-read does not look like a freeze.
+        if not self.player.has_uploaded() and not self.resolving:
+            decoded = float(getattr(self.player, "decode_pos", 0.0) or 0.0)
+            if decoded > 0.5:
+                label = (tr("yt_pl_seeking_back")
+                         if getattr(self.player, "seek_note", "") == "restart"
+                         else tr("yt_pl_buffering"))
+                self.status = "%s %s" % (label, playback.format_seconds(decoded))
+                self._overlay_until = time.time() + 1.0
         now = time.time()
         if now - self._last_progress >= 5:
             self._save_progress()

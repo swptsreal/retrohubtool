@@ -15,6 +15,7 @@ import ctypes
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -44,6 +45,22 @@ SYNC_HOLD = 0.05                        # release a frame within this of the clo
 # Quality -> decoded/render height. 720 is downscaled to 540 to keep the raw
 # frame upload bounded on the A133; the source stream is still full quality.
 RENDER_HEIGHTS = {"360": 360, "480": 480, "720": 540}
+
+# Packed-32 layouts to try, each paired with the ffmpeg pixel format whose byte
+# order matches it. SDL only samples one of these natively; for the others its
+# GLES2 renderer swaps channels in the shader and the Mali driver on these
+# handhelds draws those frames black - i.e. video with sound but a black screen.
+# On little-endian `rgba` bytes are R,G,B,A, which is SDL's ABGR8888 (SDL's own
+# SDL_PIXELFORMAT_RGBA32 alias is ABGR8888 on LE), so that pair goes first.
+PIXEL_CANDIDATES = (
+    ("ABGR8888", "rgba"),   # 0xAABBGGRR -> memory R,G,B,A
+    ("RGBA8888", "abgr"),   # 0xRRGGBBAA -> memory A,B,G,R
+    ("ARGB8888", "bgra"),   # 0xAARRGGBB -> memory B,G,R,A
+    ("BGRA8888", "argb"),   # 0xBBGGRRAA -> memory A,R,G,B
+)
+VIDEO_STALL_WARN = 2.5      # react quickly when a decoder stops
+HOLD_MAX = 3.0              # release the seek audio hold even without a frame
+_PIXEL_FMT_CACHE = {}
 
 
 def _read_exact(f, n):
@@ -80,6 +97,72 @@ def _log(msg):
         pass
 
 
+def mem_available_mb():
+    """Free RAM in MB, or -1 when /proc/meminfo is unreadable."""
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except Exception:
+        pass
+    return -1
+
+
+def choose_pixel_format(renderer):
+    """Pick the packed layout this renderer can draw, plus the matching pix_fmt.
+
+    SDL lists its native texture format first in SDL_RendererInfo, and only that
+    one is sampled without a channel swizzle; the Mali GLES2 driver on these
+    handhelds draws the swizzled variants black (video with sound, black
+    screen). So take the first advertised format we know how to feed and ask
+    ffmpeg for exactly that byte order. Nothing is drawn and no pixel is read
+    back: reading the window after a buffer swap is undefined and has upset this
+    driver, and a texture probe is not worth that risk.
+
+    On the TrimUI Brick the list starts with ABGR8888 - bytes R,G,B,A, the same
+    order ffmpeg's `rgba` writes - which is also the fallback for a renderer
+    reporting nothing useful.
+
+    Must be called from the thread that owns the renderer.
+    """
+    known = {}
+    for label, pix_fmt in PIXEL_CANDIDATES:
+        fmt = getattr(sdl_pixels, "SDL_PIXELFORMAT_" + label, None)
+        if fmt is not None:
+            known[fmt] = (label, pix_fmt)
+
+    name, formats = "?", []
+    try:
+        info = sdl2.SDL_RendererInfo()
+        if sdl2.SDL_GetRendererInfo(renderer, ctypes.byref(info)) == 0:
+            if info.name:
+                name = info.name.decode()
+            formats = [info.texture_formats[i] for i in range(info.num_texture_formats)]
+    except Exception as e:
+        _log("pixel format: renderer info failed (%s)" % e)
+
+    cached = _PIXEL_FMT_CACHE.get(name)
+    if cached:
+        return cached
+
+    listed = ",".join("0x%x" % f for f in formats) or "none"
+    for fmt in formats:
+        if fmt in known:
+            label, pix_fmt = known[fmt]
+            _log("pixel format: renderer=%s native=0x%x layout=%s pix_fmt=%s "
+                 "advertised=[%s]" % (name, fmt, label, pix_fmt, listed))
+            chosen = (label, fmt, pix_fmt)
+            _PIXEL_FMT_CACHE[name] = chosen
+            return chosen
+
+    label, pix_fmt = PIXEL_CANDIDATES[0]
+    fmt = getattr(sdl_pixels, "SDL_PIXELFORMAT_" + label, None)
+    _log("pixel format: no known layout in [%s] (renderer=%s), defaulting to "
+         "layout=%s pix_fmt=%s" % (listed, name, label, pix_fmt))
+    chosen = (label, fmt, pix_fmt)
+    _PIXEL_FMT_CACHE[name] = chosen
+    return chosen
 def _even(n):
     return n - (n % 2)
 
@@ -183,6 +266,11 @@ class InAppPlayer:
         self.texture = None
         self.tex_w = 0
         self.tex_h = 0
+        self._tex_label = PIXEL_CANDIDATES[0][0]
+        self._tex_fmt = None
+        self._pix_fmt = PIXEL_CANDIDATES[0][1]
+        self._spawn_time = 0.0
+        self._stall_logged = False
         self.video_proc = None
         self.audio_proc = None
         self._threads = []
@@ -207,18 +295,32 @@ class InAppPlayer:
         self.speed = 1.0
         self.position = 0.0
         self.duration = 0.0
+        self.seek_note = ""
+        self.decode_pos = 0.0
+        self._hold_audio = False
         self.error = ""
         self._w, self._h = target_size("360")
         self._start_pos = 0.0
         self._local_pos = 0.0
         self._video_url = ""
         self._audio_url = ""
+        self._video_ss = 0.0
+        self._audio_ss = 0.0
+        self._respawns = 0
+        self._hold_since = 0.0
+        self.video_id = ""
+        self.quality = "360"
+        self._info_json = ""
+        self._dl_procs = {}
+        self._url_src = {}
+        self._pending_spawn = False
+        self._info_json_failed = False
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
     def start(self, video_url, audio_url, start_pos=0.0, audio_only=False,
-              speed=1.0, quality="360", duration=0.0) -> bool:
+              speed=1.0, quality="360", duration=0.0, video_id=None) -> bool:
         if not available():
             self.error = "ffmpeg or SDL audio unavailable"
             _log(self.error)
@@ -238,12 +340,14 @@ class InAppPlayer:
         except Exception as e:
             _log("renderer info error: %s" % e)
 
+        self.video_id = video_id or ""
         self._video_url = video_url or audio_url
         self._audio_url = audio_url or video_url
         self._start_pos = max(0.0, float(start_pos or 0.0))
         self.audio_only = bool(audio_only)
         self.speed = float(speed or 1.0)
         self.duration = float(duration or 0.0)
+        self.quality = str(quality or "360")
         self._w, self._h = target_size(quality)
         self.position = self._start_pos
         self.error = ""
@@ -259,8 +363,26 @@ class InAppPlayer:
         self._upload_err_logged = False
         self._video_read = self._video_up = self._video_drop = 0
         self._local_pos = 0.0
-        _log("start audio_only=%s quality=%s size=%dx%d start=%.1fs speed=%.2f" %
-             (self.audio_only, quality, self._w, self._h, self._start_pos, self.speed))
+        self.decode_pos = self._start_pos
+        self.seek_note = ""
+        self._video_ss = self._start_pos
+        self._audio_ss = self._start_pos
+        self._respawns = 0
+        self._pending_spawn = False
+        self._info_json_failed = False
+        _log("player build: section-v3 (pipe + yt-dlp sections for seek/resume)")
+        _log("start audio_only=%s quality=%s size=%dx%d start=%.1fs speed=%.2f "
+             "mem_avail=%dMB" %
+             (self.audio_only, quality, self._w, self._h, self._start_pos, self.speed,
+              mem_available_mb()))
+
+        # yt-dlp's metadata for this video is needed to download a section on the
+        # next seek. Building it takes a few seconds, so do it in the background
+        # while the video plays instead of in the seek itself.
+        if self.video_id:
+            t = threading.Thread(target=self._build_info_json, daemon=True)
+            t.start()
+            self._threads.append(t)
 
         try:
             sdl2.SDL_InitSubSystem(sdl2.SDL_INIT_AUDIO)
@@ -276,18 +398,20 @@ class InAppPlayer:
             _log(self.error)
             return False
         sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 0)
+        if self._start_pos > 0.5:
+            # Picking up mid-stream: hold the sound until the picture is there,
+            # so the progress bar does not run ahead of the screen.
+            self._hold_audio = True
+            self._hold_since = time.time()
+            sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 1)
+            _log("audio: held until the video catches up (resume at %.1fs)" %
+                 self._start_pos)
 
         if not self.audio_only:
-            # ARGB8888 is the GLES2-friendly 32-bit format; on little-endian its
-            # byte order is B,G,R,A, which matches ffmpeg's "bgra" output.
-            # RGBA8888 is GL_RGBA on GLES2 (no swizzle needed); ffmpeg outputs
-            # matching "rgba" bytes. ARGB8888/BGRA needed a swizzle shader that
-            # this Mali driver rendered wrong (black/green).
+            self._tex_label, self._tex_fmt, self._pix_fmt = choose_pixel_format(self.renderer)
             self.texture = sdl2.SDL_CreateTexture(
-                self.renderer,
-                sdl_pixels.SDL_PIXELFORMAT_RGBA8888,
-                sdl_render.SDL_TEXTUREACCESS_STREAMING,
-                self._w, self._h)
+                self.renderer, self._tex_fmt,
+                sdl_render.SDL_TEXTUREACCESS_STREAMING, self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
             try:
                 sdl2.SDL_SetTextureBlendMode(self.texture, sdl2.SDL_BLENDMODE_NONE)
@@ -299,13 +423,13 @@ class InAppPlayer:
                 qrc = sdl2.SDL_QueryTexture(self.texture, ctypes.byref(fmt),
                                             ctypes.byref(acc), ctypes.byref(qw),
                                             ctypes.byref(qh))
-                _log("video: texture created=%s query rc=%s fmt=0x%x %dx%d" %
-                     (bool(self.texture), qrc, fmt.value, qw.value, qh.value))
+                _log("video: texture created=%s layout=%s pix_fmt=%s query rc=%s "
+                     "fmt=0x%x %dx%d" %
+                     (bool(self.texture), self._tex_label, self._pix_fmt, qrc,
+                      fmt.value, qw.value, qh.value))
             except Exception as e:
                 _log("video: texture setup error: %s" % e)
 
-        # Truncate the ffmpeg stderr logs once per session; spawns append so a
-        # later seek cannot wipe the error that explains an earlier failure.
         for p in ("/tmp/rh_ffmpeg_a.log", "/tmp/rh_ffmpeg_v.log"):
             try:
                 open(p, "wb").close()
@@ -313,10 +437,41 @@ class InAppPlayer:
                 pass
 
         ff = find_ffmpeg()
+        self._spawn_time = time.time()
+        self._stall_logged = False
+        if self._start_pos > 0.5 and not self._info_json:
+            # Resuming: the source has to be a section from that point (reading
+            # from the start would take minutes on a long video). yt-dlp's
+            # metadata is still being built, so start the decoders as soon as it
+            # is ready - update() does that on the next frames.
+            self._pending_spawn = True
+            _log("resume %.1fs: waiting for yt-dlp metadata before starting" %
+                 self._start_pos)
+        else:
+            self._spawn_decoders(ff)
+        return True
+
+    def _spawn_decoders(self, ff=None):
+        self._pending_spawn = False
+        ff = ff or find_ffmpeg()
+        self._spawn_time = time.time()
+        self._stall_logged = False
         self._spawn_audio(ff)
         if not self.audio_only:
             self._spawn_video(ff)
-        return True
+
+    def _build_info_json(self):
+        try:
+            from .yt import resolve_info_json
+            path = resolve_info_json(self.video_id, self.quality)
+            if path:
+                self._info_json = path
+                _log("info json ready: %s" % path)
+            else:
+                self._info_json_failed = True
+        except Exception as e:
+            self._info_json_failed = True
+            _log("info json failed: %s" % e)
 
     def stop(self):
         self._stop.set()
@@ -336,21 +491,23 @@ class InAppPlayer:
             self.texture = None
         self._frames.clear()
 
-    def seek(self, pos):
-        """Restart the stream at *pos*.
+    def seek(self, pos, note="restart"):
+        """Restart both decoders at *pos*.
 
-        The ffmpeg inputs are pipes, so nothing can be seeked in place: both
-        decoders are re-spawned with `-ss <pos>`, which makes ffmpeg drop
-        packets until the target timestamp (timestamps then restart at 0). The
-        playback clock is offset by *pos* so position/resume stay correct.
+        Nothing is re-read from the beginning: for a seek the source is a
+        yt-dlp *section* download (it knows the fragment byte ranges), so the
+        picture starts within a second or two at any position, forwards or
+        backwards, on any network.
         """
         target = max(0.0, float(pos or 0.0))
         if self.duration > 0:
             target = min(target, max(0.0, self.duration - 1.0))
-        _log("seek %.1fs -> restart ffmpeg at that position" % target)
         self._start_pos = target
         self._local_pos = 0.0
         self.position = target
+        self.seek_note = note
+        self._respawns += 1
+        _log("seek %.1fs -> section restart (respawn #%d)" % (target, self._respawns))
         self._kill_procs()
         self._stop.clear()
         self._frames.clear()
@@ -362,69 +519,144 @@ class InAppPlayer:
         self._got_upload = False
         self._upload_err_logged = False
         self._video_read = self._video_up = self._video_drop = 0
+        self.decode_pos = target
         try:
             sdl_audio.SDL_ClearQueuedAudio(self.audio_dev)
         except Exception:
             pass
+        if self.audio_dev:
+            try:
+                self._hold_audio = True
+                self._hold_since = time.time()
+                sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 1)
+            except Exception:
+                self._hold_audio = False
         ff = find_ffmpeg()
+        self._spawn_time = time.time()
+        self._stall_logged = False
         self._spawn_audio(ff)
         if not self.audio_only:
             self._spawn_video(ff)
 
     # ------------------------------------------------------------------
-    # ffmpeg processes
+    # Sources: the plain URL, or a yt-dlp section download when seeking
     # ------------------------------------------------------------------
-    def _spawn_feeder(self, url, proc, kind):
-        t = threading.Thread(target=self._feed_stream, args=(url, proc, kind), daemon=True)
+    def _ytdlp_boot(self):
+        """Prefix that runs the bundled yt-dlp package as a CLI."""
+        from .yt import ytdlp_zip_path
+        zip_path = ytdlp_zip_path()
+        py = sys.executable or "python3"
+        boot = ("import sys; sys.path.insert(0, %r); import yt_dlp; "
+                "sys.exit(yt_dlp.main())" % zip_path)
+        return [py, "-c", boot]
+
+    def _section_cmd(self, kind, ss):
+        """yt-dlp command that writes the stream from *ss* onwards to stdout."""
+        if not self._info_json or not os.path.exists(self._info_json):
+            return None
+        itag = _url_itag(self._audio_url if kind == "a" else self._video_url)
+        return self._ytdlp_boot() + [
+            "--no-warnings", "--quiet", "--no-playlist",
+            "--load-info-json", self._info_json,
+            "--download-sections", "*%.1f-" % ss,
+            "-f", str(itag), "--output", "-"]
+
+    def _section_err(self, kind):
+        try:
+            return open("/tmp/rh_section_%s.log" % kind, "ab")
+        except Exception:
+            return subprocess.DEVNULL
+
+    def _section_err_tail(self, kind):
+        try:
+            with open("/tmp/rh_section_%s.log" % kind, "r", errors="ignore") as f:
+                txt = f.read().strip()
+            if txt:
+                _log("yt-dlp %s stderr: %s" % (kind, txt[-400:]))
+        except Exception:
+            pass
+
+    def _spawn_feeder(self, url, proc, kind, ss):
+        t = threading.Thread(target=self._feed_stream, args=(url, proc, kind, ss),
+                             daemon=True)
         t.start()
         self._threads.append(t)
 
-    def _feed_stream(self, url, proc, kind):
-        """Fetch the stream with Python and pipe it into ffmpeg's stdin.
+    def _feed_stream(self, url, proc, kind, ss):
+        """Copy one stream into ffmpeg's stdin.
 
-        The device ffmpeg has no http(s) protocol (it is built for the screen
-        streamer), so it cannot open a googlevideo URL directly. Feeding
-        `-i pipe:0` avoids that entirely."""
-        import ssl as _ssl
-        import urllib.request as _urlreq
+        ss <= 0: fetch the resolved URL. That is the whole stream, and it is paced
+        by playback because the readers only pull what they can use.
+        ss  > 0: let yt-dlp download *that section*. It knows the fragment byte
+        ranges, so this is a real seek: nothing is re-read, and ffmpeg never gets
+        `-ss` on a pipe (which feeds a misaligned bitstream and decodes nothing).
+        """
         total = 0
+        src = None
+        section = None
         try:
-            req = _urlreq.Request(url, headers={"User-Agent": _UA})
-            ctx = _ssl._create_unverified_context()
-            with _urlreq.urlopen(req, timeout=20, context=ctx) as resp:
-                _log("feed %s start" % kind)
-                while not self._stop.is_set():
-                    if self.paused:
-                        time.sleep(0.02)
-                        continue
-                    chunk = resp.read(READ_CHUNK)
-                    if not chunk:
-                        break
-                    try:
-                        proc.stdin.write(chunk)
-                        total += len(chunk)
-                    except Exception:
-                        break
+            cmd = self._section_cmd(kind, ss) if ss > 0.05 else None
+            if cmd:
+                _log("feed %s: section from %.1fs (itag %s)" %
+                     (kind, ss, _url_itag(url)))
+                section = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                           stderr=self._section_err(kind), bufsize=0)
+                self._dl_procs[kind] = section
+                reader = section.stdout
+            else:
+                if ss > 0.05:
+                    _log("feed %s: yt-dlp info not ready, falling back to the full "
+                         "URL from the start" % kind)
+                import ssl as _ssl
+                import urllib.request as _urlreq
+                ctx = _ssl._create_unverified_context()
+                req = _urlreq.Request(url, headers={"User-Agent": _UA})
+                src = _urlreq.urlopen(req, timeout=20, context=ctx)
+                self._url_src[kind] = src
+                reader = src
+            _log("feed %s start" % kind)
+            while not self._stop.is_set():
+                if self.paused:
+                    time.sleep(0.02)
+                    continue
+                chunk = reader.read(READ_CHUNK)
+                if not chunk:
+                    break
+                try:
+                    proc.stdin.write(chunk)
+                    total += len(chunk)
+                except Exception:
+                    break
         except Exception as e:
             _log("feed %s error: %s" % (kind, e))
+            if section:
+                self._section_err_tail(kind)
         finally:
-            _log("feed %s done bytes=%d" % (kind, total))
             try:
                 if proc.stdin:
                     proc.stdin.close()
             except Exception:
                 pass
+            try:
+                if section and section.poll() is None:
+                    section.kill()
+            except Exception:
+                pass
+            self._dl_procs.pop(kind, None)
+            _log("feed %s done bytes=%d" % (kind, total))
 
-    def _spawn_audio(self, ff):
-        cmd = [ff, "-hide_banner", "-loglevel", "error"]
-        if self._start_pos > 0.05:
-            cmd += ["-ss", "%.3f" % self._start_pos]
-        cmd += ["-f", "mp4", "-i", "pipe:0", "-vn"]
+    # ------------------------------------------------------------------
+    # ffmpeg processes
+    # ------------------------------------------------------------------
+    def _spawn_audio(self, ff, ss=None):
+        ss = self._start_pos if ss is None else ss
+        self._audio_ss = ss
+        cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0", "-vn"]
         if abs(self.speed - 1.0) > 0.01:
             cmd += ["-af", "atempo=%.3f" % self.speed]
         cmd += ["-f", "s16le", "-ar", str(AUDIO_RATE), "-ac", str(AUDIO_CHANNELS), "pipe:1"]
-        _log("audio: ffmpeg -ss %.1f -f mp4 -i pipe:0 itag=%s" %
-             (self._start_pos, _url_itag(self._audio_url)))
+        _log("audio: ffmpeg -f mp4 -i pipe:0 itag=%s from=%.1fs" %
+             (_url_itag(self._audio_url), ss))
         try:
             self.audio_err = open("/tmp/rh_ffmpeg_a.log", "ab")
         except Exception:
@@ -432,22 +664,22 @@ class InAppPlayer:
         self.audio_proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self.audio_err, bufsize=0)
-        self._spawn_feeder(self._audio_url, self.audio_proc, "a")
+        self._spawn_feeder(self._audio_url, self.audio_proc, "a", ss)
         t = threading.Thread(target=self._audio_loop, daemon=True)
         t.start()
         self._threads.append(t)
 
-    def _spawn_video(self, ff):
+    def _spawn_video(self, ff, ss=None):
+        ss = self._start_pos if ss is None else ss
+        self._video_ss = ss
         vf = "fps=%d,scale=%d:%d:flags=fast_bilinear" % (FPS, self._w, self._h)
         if abs(self.speed - 1.0) > 0.01:
             vf = "setpts=PTS/%.3f,%s" % (self.speed, vf)
-        cmd = [ff, "-hide_banner", "-loglevel", "error"]
-        if self._start_pos > 0.05:
-            cmd += ["-ss", "%.3f" % self._start_pos]
-        cmd += ["-f", "mp4", "-i", "pipe:0",
-                "-an", "-vf", vf, "-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"]
-        _log("video: ffmpeg -ss %.1f -f mp4 -i pipe:0 itag=%s size=%dx%d" %
-             (self._start_pos, _url_itag(self._video_url), self._w, self._h))
+        cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0",
+               "-an", "-vf", vf, "-pix_fmt", self._pix_fmt,
+               "-f", "rawvideo", "pipe:1"]
+        _log("video: ffmpeg -f mp4 -i pipe:0 itag=%s size=%dx%d pix_fmt=%s from=%.1fs" %
+             (_url_itag(self._video_url), self._w, self._h, self._pix_fmt, ss))
         try:
             self.video_err = open("/tmp/rh_ffmpeg_v.log", "ab")
         except Exception:
@@ -455,14 +687,12 @@ class InAppPlayer:
         self.video_proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=self.video_err, bufsize=0)
-        self._spawn_feeder(self._video_url, self.video_proc, "v")
+        self._spawn_feeder(self._video_url, self.video_proc, "v", ss)
         t = threading.Thread(target=self._video_loop, daemon=True)
         t.start()
         self._threads.append(t)
 
     def _kill_procs(self):
-        # Close stdin first so a feeder blocked in write() wakes up instead of
-        # writing into a dead pipe.
         for p in (self.video_proc, self.audio_proc):
             try:
                 if p and p.stdin:
@@ -477,6 +707,19 @@ class InAppPlayer:
                 pass
         self.video_proc = None
         self.audio_proc = None
+        for kind in ("a", "v"):
+            p = self._dl_procs.pop(kind, None)
+            try:
+                if p and p.poll() is None:
+                    p.kill()
+            except Exception:
+                pass
+            s = self._url_src.pop(kind, None)
+            try:
+                if s:
+                    s.close()
+            except Exception:
+                pass
         for h in (self.audio_err, self.video_err):
             try:
                 if hasattr(h, "close"):
@@ -485,8 +728,6 @@ class InAppPlayer:
                 pass
         self.audio_err = None
         self.video_err = None
-        # Keep the threads that are still winding down tracked: a respawn
-        # (seek/quality change) must not orphan a feeder per restart.
         alive = []
         for t in self._threads:
             try:
@@ -552,8 +793,10 @@ class InAppPlayer:
                 self._got_video = True
                 if idx == 0:
                     _log("video: first frame read (%d bytes, expect %d)" % (len(data), frame_bytes))
+                pts = self._video_ss + idx / float(FPS)
                 with self._frame_lock:
-                    self._frames.append((idx / float(FPS), data))
+                    self._frames.append((pts, data))
+                self.decode_pos = pts * self.speed
                 idx += 1
         except Exception as e:
             self.error = f"video: {e}"
@@ -564,7 +807,6 @@ class InAppPlayer:
             _log("video: loop end read=%d up=%d drop=%d rc=%s" %
                  (idx, self._video_up, self._video_drop,
                   proc.poll() if proc else "?"))
-
     def _dump_err(self, kind):
         """Log the tail of ffmpeg's stderr so failures are diagnosable."""
         try:
@@ -600,23 +842,45 @@ class InAppPlayer:
 
     def update(self):
         """Advance the clock and upload the next due video frame."""
+        if self._pending_spawn:
+            # Waiting for the metadata a section-based resume needs. Give it a
+            # deadline so a failed extraction cannot hold playback forever.
+            if (self._info_json or self._info_json_failed
+                    or time.time() - self._spawn_time > 15.0):
+                _log("resume: metadata %s, starting decoders" %
+                     ("ready" if self._info_json else "unavailable"))
+                self._spawn_decoders()
+            return
         if self.paused:
             return
-        # Audio is the master clock. Both ffmpeg outputs are in output time
-        # (0-based after `-ss`, video pre-scaled by setpts for speed), so sync
-        # compares frames against the local clock while the exposed position
-        # adds the seek offset and the speed factor.
+        # Audio is the master clock: `_local_clock` counts the audio queued since
+        # the decoders were (re)started, i.e. content seconds / speed (atempo
+        # compresses the output). The position adds the seek offset, and video
+        # frames - whose timestamps are stream content seconds scaled by setpts
+        # when speed != 1 - are compared against it.
         self._local_pos = self._local_clock()
         self.position = self._start_pos + self._local_pos * self.speed
+        # Nothing on screen yet: log the decoder stderr once so a bad source is
+        # distinguishable from a slow one.
+        now = time.time()
+        if self._hold_audio and self._hold_since and now - self._hold_since > HOLD_MAX:
+            # No picture yet (slow download / position not downloaded): let the
+            # sound go rather than hanging silently on the held device.
+            self._hold_audio = False
+            try:
+                sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 0)
+            except Exception:
+                pass
+            _log("audio: hold released after %.0fs without a picture" % HOLD_MAX)
         if self.audio_only or not self.texture:
             return
-        clock_pos = self._local_pos
+        clock_pos = self.position
         due = None
         with self._frame_lock:
-            while self._frames and self._frames[0][0] < clock_pos - SYNC_DROP:
+            while self._frames and (self._frames[0][0] * self.speed) < clock_pos - SYNC_DROP:
                 self._frames.popleft()
                 self._video_drop += 1
-            if self._frames and self._frames[0][0] <= clock_pos + SYNC_HOLD:
+            if self._frames and (self._frames[0][0] * self.speed) <= clock_pos + SYNC_HOLD:
                 due = self._frames.popleft()[1]
         if due is not None:
             ok = False
@@ -630,9 +894,9 @@ class InAppPlayer:
                     for i in range(0, min(16000, len(due)), 4):
                         if due[i] or due[i + 1] or due[i + 2]:
                             nz += 1
-                    _log("video: first RGBA upload rc=%s ok=%s audio_pos=%.2f "
+                    _log("video: first %s upload rc=%s ok=%s clock=%.2f "
                          "px0=%s mid=%s rgb_nz=%d err=%r" %
-                         (rc, ok, clock_pos, due[:4].hex(),
+                         (self._pix_fmt, rc, ok, clock_pos, due[:4].hex(),
                           due[len(due) // 2:len(due) // 2 + 4].hex(), nz,
                           sdl2.SDL_GetError().decode()))
             except Exception as e:
@@ -641,6 +905,18 @@ class InAppPlayer:
                     _log("video: RGBA upload error: %s" % e)
             if ok:
                 self._video_up += 1
+                if self.seek_note:
+                    # The first frame at/after the seek target is on screen: the
+                    # seek is done, stop telling the user it is still working.
+                    self.seek_note = ""
+                if self._hold_audio:
+                    # Picture has caught up: let the sound start here too.
+                    self._hold_audio = False
+                    try:
+                        sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 0)
+                    except Exception:
+                        pass
+                    _log("audio: released after catch-up")
                 if self._video_up % 300 == 0:
                     _log("video: up=%d drop=%d pos=%.2f queued=%d" %
                          (self._video_up, self._video_drop, clock_pos, len(self._frames)))
@@ -673,6 +949,9 @@ class InAppPlayer:
     def set_paused(self, paused):
         self.paused = bool(paused)
         try:
+            if not self.paused and self._hold_audio:
+                # Still catching up after a seek: the release path owns the device.
+                return
             sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 1 if self.paused else 0)
         except Exception:
             pass

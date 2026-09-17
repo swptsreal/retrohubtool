@@ -41,7 +41,7 @@ enable_logging = False
 # Random Device ID duy nhat cho tung may (vi du: RH-8D3F)
 device_id = ""
 # YouTube playback backend: "auto" | "inapp" | "retroarch".
-player_backend = "auto"
+player_backend = "retroarch"
 # Preferred video height for the in-app player: "360" | "480" | "720".
 video_quality = "360"
 # Start YouTube playback in audio-only mode by default.
@@ -63,7 +63,7 @@ if os.path.exists(SETTINGS_FILE):
             pending_update = cfg.get("pending_update", "") or ""
             catalog_sha = cfg.get("catalog_sha", "") or ""
             pending_catalog_notice = cfg.get("pending_catalog_notice", "") or ""
-            player_backend = cfg.get("player_backend", "auto") or "auto"
+            player_backend = cfg.get("player_backend", "retroarch") or "retroarch"
             video_quality = str(cfg.get("video_quality", "360") or "360")
             audio_only_default = cfg.get("audio_only_default", False)
     except:
