@@ -46,6 +46,16 @@ SYNC_HOLD = 0.05                        # release a frame within this of the clo
 RENDER_HEIGHTS = {"360": 360, "480": 480, "720": 540}
 
 
+def _url_itag(url):
+    """Extract the YouTube itag from a googlevideo URL (for diagnostics)."""
+    try:
+        import urllib.parse
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(url or "").query)
+        return q.get("itag", ["?"])[0]
+    except Exception:
+        return "?"
+
+
 def _log(msg):
     """Write diagnostics to the same log the RetroArch path uses."""
     try:
@@ -244,6 +254,14 @@ class InAppPlayer:
                 self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
 
+        # Truncate the ffmpeg stderr logs once per session; spawns append so a
+        # later seek cannot wipe the error that explains an earlier failure.
+        for p in ("/tmp/rh_ffmpeg_a.log", "/tmp/rh_ffmpeg_v.log"):
+            try:
+                open(p, "wb").close()
+            except Exception:
+                pass
+
         ff = find_ffmpeg()
         self._spawn_audio(ff)
         if not self.audio_only:
@@ -335,13 +353,13 @@ class InAppPlayer:
                 pass
 
     def _spawn_audio(self, ff):
-        cmd = [ff, "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn"]
+        cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0", "-vn"]
         if abs(self.speed - 1.0) > 0.01:
             cmd += ["-af", "atempo=%.3f" % self.speed]
         cmd += ["-f", "s16le", "-ar", str(AUDIO_RATE), "-ac", str(AUDIO_CHANNELS), "pipe:1"]
-        _log("audio: ffmpeg -i pipe:0 (fed from python)")
+        _log("audio: ffmpeg -f mp4 -i pipe:0 itag=%s" % _url_itag(self._audio_url))
         try:
-            self.audio_err = open("/tmp/rh_ffmpeg_a.log", "wb")
+            self.audio_err = open("/tmp/rh_ffmpeg_a.log", "ab")
         except Exception:
             self.audio_err = subprocess.DEVNULL
         self.audio_proc = subprocess.Popen(
@@ -356,11 +374,12 @@ class InAppPlayer:
         vf = "fps=%d,scale=%d:%d:flags=fast_bilinear" % (FPS, self._w, self._h)
         if abs(self.speed - 1.0) > 0.01:
             vf = "setpts=PTS/%.3f,%s" % (self.speed, vf)
-        cmd = [ff, "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
+        cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0",
                "-an", "-vf", vf, "-pix_fmt", "bgra", "-f", "rawvideo", "pipe:1"]
-        _log("video: ffmpeg -i pipe:0 (fed from python)")
+        _log("video: ffmpeg -f mp4 -i pipe:0 itag=%s size=%dx%d" %
+             (_url_itag(self._video_url), self._w, self._h))
         try:
-            self.video_err = open("/tmp/rh_ffmpeg_v.log", "wb")
+            self.video_err = open("/tmp/rh_ffmpeg_v.log", "ab")
         except Exception:
             self.video_err = subprocess.DEVNULL
         self.video_proc = subprocess.Popen(
@@ -441,6 +460,8 @@ class InAppPlayer:
                     continue
                 data = proc.stdout.read(frame_bytes)
                 if not data or len(data) < frame_bytes:
+                    _log("video: short read (got %d of %d) after %d frames" %
+                         (len(data) if data else 0, frame_bytes, idx))
                     break
                 self._got_video = True
                 if idx == 0:
