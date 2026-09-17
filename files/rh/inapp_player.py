@@ -195,6 +195,7 @@ class InAppPlayer:
         self._got_audio = False
         self._got_video = False
         self._got_upload = False
+        self._upload_err_logged = False
         self._video_read = 0
         self._video_up = 0
         self._video_drop = 0
@@ -254,6 +255,7 @@ class InAppPlayer:
         self._got_audio = False
         self._got_video = False
         self._got_upload = False
+        self._upload_err_logged = False
         self._video_read = self._video_up = self._video_drop = 0
 
         try:
@@ -343,6 +345,7 @@ class InAppPlayer:
         self._got_audio = False
         self._got_video = False
         self._got_upload = False
+        self._upload_err_logged = False
         self._video_read = self._video_up = self._video_drop = 0
         try:
             sdl_audio.SDL_ClearQueuedAudio(self.audio_dev)
@@ -583,11 +586,12 @@ class InAppPlayer:
                 yp = due[:ys]
                 up = due[ys:ys + us]
                 vp = due[ys + us:ys + 2 * us]
+                # PySDL2 wants POINTER(c_ubyte) for the planes, not c_char_p.
+                Y = ctypes.cast(ctypes.c_char_p(yp), ctypes.POINTER(ctypes.c_ubyte))
+                U = ctypes.cast(ctypes.c_char_p(up), ctypes.POINTER(ctypes.c_ubyte))
+                V = ctypes.cast(ctypes.c_char_p(vp), ctypes.POINTER(ctypes.c_ubyte))
                 rc = sdl2.SDL_UpdateYUVTexture(
-                    self.texture, None,
-                    ctypes.c_char_p(yp), w,
-                    ctypes.c_char_p(up), w // 2,
-                    ctypes.c_char_p(vp), w // 2)
+                    self.texture, None, Y, w, U, w // 2, V, w // 2)
                 ok = (rc == 0)
                 if not self._got_upload:
                     self._got_upload = True
@@ -600,7 +604,9 @@ class InAppPlayer:
                          (rc, ok, audio_pos, yp[:4].hex(), nz,
                           sdl2.SDL_GetError().decode()))
             except Exception as e:
-                _log("video: YUV upload error: %s" % e)
+                if not self._upload_err_logged:
+                    self._upload_err_logged = True
+                    _log("video: YUV upload error: %s" % e)
             if ok:
                 self._video_up += 1
                 if self._video_up % 300 == 0:
