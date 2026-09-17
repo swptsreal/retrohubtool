@@ -1,12 +1,12 @@
 {
-  "version": "3.1",
+  "version": "3.2-rc1",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T15:46:25+0700",
+  "built": "2026-09-17T16:06:08+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.1: Cập nhật bot Telegram mới để gửi nhật ký (log) và thông báo; sửa lỗi thoát ứng dụng (đóng modal, thoát sạch, timeout self-heal).",
-    "en": "v3.1: New Telegram bot for log upload and notifications; robust app exit (modal close, clean shutdown, self-heal timeout)."
+    "vi": "Bản 3.2-rc1 (thử nghiệm): hỗ trợ phiên bản có hậu tố (rc/beta) trong cập nhật OTA; gửi log YouTube/in-app player qua Telegram.",
+    "en": "v3.2-rc1 (test): pre-release version suffix support (rc/beta) for OTA; send YouTube/in-app player logs via Telegram."
   },
   "remove": [
     "app.pyc",
@@ -733,8 +733,8 @@
     },
     {
       "path": "rh/version.py",
-      "size": 854,
-      "sha256": "63d0edd48b6117ca2c1f97e011ef2805b886a3e2924ef939b784624b66798349"
+      "size": 1533,
+      "sha256": "55da0c7b463ce9f03c1c24fc493b2ec8e71a88cd35a6fa7aa5481d246b3ab959"
     },
     {
       "path": "rh/yt.py",
