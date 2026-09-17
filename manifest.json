@@ -1,12 +1,12 @@
 {
-  "version": "3.6",
+  "version": "3.7",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T16:57:06+0700",
+  "built": "2026-09-17T17:03:42+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.6: Sửa video in-app đen (đọc đủ frame từ pipe, tránh short-read bị hiểu nhầm là EOF).",
-    "en": "v3.6: Fix black in-app video (read full frames from the pipe; a short read is not EOF)."
+    "vi": "Bản 3.7: Sửa video in-app đen — nạp texture bằng SDL_LockTexture + format ARGB8888 (tương thích GLES2), log kết quả upload/render.",
+    "en": "v3.7: Fix black in-app video - upload via SDL_LockTexture + ARGB8888 (GLES2-friendly), log upload/render results."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 21077,
-      "sha256": "bca741d0d6c4830bd284110fb425234490f2f7dbd08fc1aac21f2ab097e5a41b"
+      "size": 22184,
+      "sha256": "4972dddf32d8041896c473666e6a726ca58c06b09369e6d004e311b34f95ca63"
     },
     {
       "path": "rh/inputs.py",
@@ -643,8 +643,8 @@
     },
     {
       "path": "rh/screens/player.py",
-      "size": 12740,
-      "sha256": "236c05639aa7e3c73db2459aacba3b86989b6c5050ae3de0cd80e33c509ad124"
+      "size": 13089,
+      "sha256": "0787b05c3f8161216cee97f3c790b99496ff539ea2f063975a64fb3fc86e8613"
     },
     {
       "path": "rh/screens/queue.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1529,
-      "sha256": "e72e558f67bae734f344df2145af2041c6937e2144717ddc9094f6ecf94a5da3"
+      "sha256": "d314cfd2c3fae0bd552e2d8d1b9f18bf61da14f5e5f874ea01f518a03f92923c"
     },
     {
       "path": "rh/yt.py",

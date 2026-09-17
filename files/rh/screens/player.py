@@ -40,6 +40,7 @@ class PlayerScreen(BaseScreen):
         self._pending_start = None
         self._leaving = False
         self._fallback_done = False
+        self._rc_logged = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -293,7 +294,15 @@ class PlayerScreen(BaseScreen):
         dx = (state.SCREEN_W - dw) // 2
         dy = area_y + (area_h - dh) // 2
         rect = sdl2.SDL_Rect(dx, dy, dw, dh)
-        sdl2.SDL_RenderCopy(engine.renderer, self.player.texture, None, rect)
+        rc = sdl2.SDL_RenderCopy(engine.renderer, self.player.texture, None, rect)
+        if not self._rc_logged:
+            self._rc_logged = True
+            try:
+                from ..yt_player import log as _ytlog
+                _ytlog("[inapp] video: RenderCopy rc=%s rect=(%d,%d,%d,%d)" %
+                       (rc, dx, dy, dw, dh))
+            except Exception:
+                pass
 
     def _draw_overlay(self, engine, area_y):
         pad = 24

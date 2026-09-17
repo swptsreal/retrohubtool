@@ -245,6 +245,8 @@ class InAppPlayer:
         self._audio_done = False
         self._got_audio = False
         self._got_video = False
+        self._got_upload = False
+        self._video_read = self._video_up = self._video_drop = 0
 
         try:
             sdl2.SDL_InitSubSystem(sdl2.SDL_INIT_AUDIO)
@@ -262,12 +264,16 @@ class InAppPlayer:
         sdl_audio.SDL_PauseAudioDevice(self.audio_dev, 0)
 
         if not self.audio_only:
+            # ARGB8888 is the GLES2-friendly 32-bit format; on little-endian its
+            # byte order is B,G,R,A, which matches ffmpeg's "bgra" output.
             self.texture = sdl2.SDL_CreateTexture(
                 self.renderer,
-                sdl_pixels.SDL_PIXELFORMAT_BGRA8888,
+                sdl_pixels.SDL_PIXELFORMAT_ARGB8888,
                 sdl_render.SDL_TEXTUREACCESS_STREAMING,
                 self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
+            _log("video: texture created=%s fmt=ARGB8888 %dx%d" %
+                 (bool(self.texture), self._w, self._h))
 
         # Truncate the ffmpeg stderr logs once per session; spawns append so a
         # later seek cannot wipe the error that explains an earlier failure.
@@ -314,6 +320,8 @@ class InAppPlayer:
         self._audio_done = False
         self._got_audio = False
         self._got_video = False
+        self._got_upload = False
+        self._video_read = self._video_up = self._video_drop = 0
         try:
             sdl_audio.SDL_ClearQueuedAudio(self.audio_dev)
         except Exception:
@@ -545,17 +553,31 @@ class InAppPlayer:
             if self._frames and self._frames[0][0] <= audio_pos + SYNC_HOLD:
                 due = self._frames.popleft()[1]
         if due is not None:
-            if not self._got_upload:
-                self._got_upload = True
-                _log("video: first frame uploaded (audio_pos=%.2f)" % audio_pos)
+            ok = False
             try:
-                sdl2.SDL_UpdateTexture(self.texture, None, ctypes.c_char_p(due), self._w * 4)
+                px = ctypes.c_void_p()
+                pitch = ctypes.c_int(0)
+                rc = sdl2.SDL_LockTexture(self.texture, None,
+                                          ctypes.byref(px), ctypes.byref(pitch))
+                if rc == 0 and px.value:
+                    ctypes.memmove(px, due, len(due))
+                    sdl2.SDL_UnlockTexture(self.texture)
+                    ok = True
+                else:
+                    rc2 = sdl2.SDL_UpdateTexture(self.texture, None,
+                                                 ctypes.c_char_p(due), self._w * 4)
+                    ok = (rc2 == 0)
+                if not self._got_upload:
+                    self._got_upload = True
+                    _log("video: first upload ok=%s lock_rc=%s pitch=%s audio_pos=%.2f" %
+                         (ok, rc, pitch.value, audio_pos))
+            except Exception as e:
+                _log("video: upload error: %s" % e)
+            if ok:
                 self._video_up += 1
                 if self._video_up % 300 == 0:
                     _log("video: up=%d drop=%d pos=%.2f queued=%d" %
                          (self._video_up, self._video_drop, audio_pos, len(self._frames)))
-            except Exception as e:
-                _log("video: UpdateTexture error: %s" % e)
 
     def produced_data(self) -> bool:
         """True once any audio or video bytes arrived (i.e. it actually played)."""
