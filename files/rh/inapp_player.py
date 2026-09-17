@@ -272,8 +272,20 @@ class InAppPlayer:
                 sdl_render.SDL_TEXTUREACCESS_STREAMING,
                 self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
-            _log("video: texture created=%s fmt=ARGB8888 %dx%d" %
-                 (bool(self.texture), self._w, self._h))
+            try:
+                sdl2.SDL_SetTextureBlendMode(self.texture, sdl2.SDL_BLENDMODE_NONE)
+                sdl2.SDL_SetTextureAlphaMod(self.texture, 255)
+                fmt = ctypes.c_uint(0)
+                acc = ctypes.c_int(0)
+                qw = ctypes.c_int(0)
+                qh = ctypes.c_int(0)
+                qrc = sdl2.SDL_QueryTexture(self.texture, ctypes.byref(fmt),
+                                            ctypes.byref(acc), ctypes.byref(qw),
+                                            ctypes.byref(qh))
+                _log("video: texture created=%s query rc=%s fmt=0x%x %dx%d" %
+                     (bool(self.texture), qrc, fmt.value, qw.value, qh.value))
+            except Exception as e:
+                _log("video: texture setup error: %s" % e)
 
         # Truncate the ffmpeg stderr logs once per session; spawns append so a
         # later seek cannot wipe the error that explains an earlier failure.
@@ -569,8 +581,14 @@ class InAppPlayer:
                     ok = (rc2 == 0)
                 if not self._got_upload:
                     self._got_upload = True
-                    _log("video: first upload ok=%s lock_rc=%s pitch=%s audio_pos=%.2f" %
-                         (ok, rc, pitch.value, audio_pos))
+                    nz = 0
+                    for i in range(0, min(16000, len(due)), 4):
+                        if due[i] or due[i + 1] or due[i + 2]:
+                            nz += 1
+                    _log("video: first upload ok=%s lock_rc=%s pitch=%s audio_pos=%.2f "
+                         "px0=%s mid=%s rgb_nonzero_4k=%d" %
+                         (ok, rc, pitch.value, audio_pos,
+                          due[:4].hex(), due[len(due) // 2:len(due) // 2 + 4].hex(), nz))
             except Exception as e:
                 _log("video: upload error: %s" % e)
             if ok:
