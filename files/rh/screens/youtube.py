@@ -4,7 +4,7 @@
 import os
 import time
 import threading
-from .. import state, yt
+from .. import playback, state, yt
 from ..paths import YT_CACHE_DIR
 from ..i18n import tr
 from ..yt_player import play_video
@@ -25,17 +25,24 @@ class YoutubeScreen(BaseScreen):
         self.active_query_idx = 0
         self.loading = False
         self.launching = False
+        self.fav_ids = set()
+        self.has_more = False
+        self.loading_more = False
+        self.load_error = ""
 
     def build_tabs(self, select_tab: str = None):
         """Build tab list dynamically: puts '★ Yêu thích' first if favorites exist."""
         favs = yt.load_favorites()
+        self.fav_ids = {f.get("id") for f in favs if f.get("id")}
         tabs = []
         if favs:
             tabs.append("★ Yêu thích")
         tabs.append("Trending")
+        if playback.load_watched():
+            tabs.append("Lịch sử")
         history = yt.load_search_history() or ["Nhạc Trẻ Remix", "Game Retro", "Hoạt Hình"]
         for q in history:
-            if q not in ("Trending", "★ Yêu thích", "Yêu thích") and q not in tabs:
+            if q not in ("Trending", "★ Yêu thích", "Yêu thích", "Lịch sử") and q not in tabs:
                 tabs.append(q)
         self.recent_queries = tabs
 
@@ -44,15 +51,39 @@ class YoutubeScreen(BaseScreen):
         elif self.active_query_idx >= len(self.recent_queries):
             self.active_query_idx = 0
 
+    def _switch_tab(self, delta):
+        n = len(self.recent_queries)
+        if n <= 1:
+            return
+        self.active_query_idx = (self.active_query_idx + delta) % n
+        self.load_current_tab()
+
     def on_enter(self, params=None):
         self.build_tabs()
         self.load_current_tab()
+        self._surface_last_error()
+
+    def _surface_last_error(self):
+        """Show the previous playback failure (if any) and clear the marker."""
+        try:
+            path = "/tmp/yt_last_error.txt"
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    msg = f.read().strip()
+                os.remove(path)
+                if msg:
+                    self.engine.toast(msg[:120], duration=5.0)
+        except Exception:
+            pass
 
     def load_current_tab(self):
         if not self.recent_queries or self.active_query_idx >= len(self.recent_queries):
             self.active_query_idx = 0
         cur_q = self.recent_queries[self.active_query_idx]
         self.loading = True
+        self.has_more = False
+        self.loading_more = False
+        self.load_error = ""
         self.videos = []
         self.selected_idx = 0
         self.scroll_row = 0
@@ -63,6 +94,8 @@ class YoutubeScreen(BaseScreen):
                     self.videos = yt.load_favorites() or []
                 elif cur_q == "Trending":
                     self.videos = yt.get_trending() or []
+                elif cur_q == "Lịch sử":
+                    self.videos = playback.load_watched() or []
                 else:
                     cached, _ = yt.load_feed_cache(cur_q)
                     if cached:
@@ -72,16 +105,44 @@ class YoutubeScreen(BaseScreen):
             except Exception as e:
                 self.engine.toast(f"Lỗi tải YouTube: {e}")
             self.loading = False
+            if not self.videos:
+                self.load_error = yt.get_last_error()
+            if cur_q not in ("★ Yêu thích", "Yêu thích", "Trending", "Lịch sử"):
+                self.has_more = bool(yt.get_continuation_token(cur_q))
 
             # Background download thumbnails
             def _bg_thumbs():
-                for v in self.videos[:18]:
+                for v in self.videos:
                     v_id = v.get("id")
                     if v_id:
                         yt.fetch_thumbnail(v.get("thumb", ""), YT_CACHE_DIR, v_id)
             threading.Thread(target=_bg_thumbs, daemon=True).start()
 
         threading.Thread(target=_bg_fetch, daemon=True).start()
+
+    def load_more(self):
+        """Append the next page of results for the current search tab."""
+        if self.loading_more or not self.has_more:
+            return
+        cur_q = self.recent_queries[self.active_query_idx] if self.active_query_idx < len(self.recent_queries) else ""
+        if cur_q in ("★ Yêu thích", "Yêu thích", "Trending", "Lịch sử"):
+            return
+        self.loading_more = True
+
+        def _bg():
+            try:
+                more, token = yt.fetch_more_youtube(cur_q)
+                existing = {v.get("id") for v in self.videos}
+                added = [v for v in more if v.get("id") and v.get("id") not in existing]
+                self.videos.extend(added)
+                self.has_more = bool(token)
+                for v in added[:18]:
+                    yt.fetch_thumbnail(v.get("thumb", ""), YT_CACHE_DIR, v["id"])
+            except Exception:
+                self.has_more = False
+            self.loading_more = False
+
+        threading.Thread(target=_bg, daemon=True).start()
 
     def get_header_title(self):
         cur_q = self.recent_queries[self.active_query_idx] if self.recent_queries else "YouTube"
@@ -92,6 +153,7 @@ class YoutubeScreen(BaseScreen):
             ("A", "Xem video", (0, 230, 150), (220, 225, 235), True),
             ("X", "Tìm kiếm", (0, 210, 255), (220, 225, 235), True),
             ("Y", "Yêu thích", (255, 200, 0), (220, 225, 235), True),
+            ("SELECT", tr("yt_retry"), (0, 210, 255), (220, 225, 235), True),
             ("B", tr("footer_back"), (255, 75, 75), (220, 225, 235), False),
         ]
 
@@ -112,18 +174,15 @@ class YoutubeScreen(BaseScreen):
             return True
 
         if btn_l1:
-            if self.active_query_idx > 0:
-                self.active_query_idx -= 1
-            else:
-                self.active_query_idx = len(self.recent_queries) - 1
-            self.load_current_tab()
+            self._switch_tab(-1)
             return True
 
         if btn_r1:
-            if self.active_query_idx < len(self.recent_queries) - 1:
-                self.active_query_idx += 1
-            else:
-                self.active_query_idx = 0
+            self._switch_tab(1)
+            return True
+
+        # [SELECT] reload the current tab (retry after a network error)
+        if inputs.get("btn_f1"):
             self.load_current_tab()
             return True
 
@@ -154,6 +213,7 @@ class YoutubeScreen(BaseScreen):
                 v = self.videos[self.selected_idx]
                 favs = yt.load_favorites()
                 new_favs, is_added = yt.toggle_favorite(v, favs)
+                self.fav_ids = {f.get("id") for f in new_favs if f.get("id")}
                 action_str = "Đã lưu vào Yêu thích" if is_added else "Đã xóa khỏi Yêu thích"
                 clean_t = yt.clean_yt_text(v.get("title", "Video"))
                 self.engine.toast(f"{action_str}: {clean_t[:24]}")
@@ -177,6 +237,14 @@ class YoutubeScreen(BaseScreen):
 
         total_v = len(self.videos)
         if total_v == 0:
+            # Nothing to navigate: let the D-pad change tabs so the user is not
+            # stuck on an empty tab.
+            if btn_left:
+                self._switch_tab(-1)
+                return True
+            if btn_right:
+                self._switch_tab(1)
+                return True
             return False
 
         cols = 3
@@ -196,6 +264,9 @@ class YoutubeScreen(BaseScreen):
                 self.scroll_row = cur_row - rows + 1
             return True
         elif btn_down:
+            if self.has_more and (self.selected_idx // cols) >= ((total_v - 1) // cols):
+                self.load_more()
+                return True
             if self.selected_idx + cols < total_v:
                 self.selected_idx += cols
             else:
@@ -231,11 +302,13 @@ class YoutubeScreen(BaseScreen):
 
         if btn_a and 0 <= self.selected_idx < total_v:
             v = self.videos[self.selected_idx]
-            v_id = v.get("id")
-            if v_id:
-                from ..modals.common import StreamLoadingModal
-                self.engine.open_modal(StreamLoadingModal(self.engine), {
-                    "video_data": v
+            if v.get("id"):
+                cur_q = self.recent_queries[self.active_query_idx] if self.active_query_idx < len(self.recent_queries) else ""
+                self.engine.push_screen("watch", {
+                    "video": v,
+                    "queue": self.videos,
+                    "index": self.selected_idx,
+                    "context": "youtube:%s" % cur_q,
                 })
             return True
 
@@ -292,8 +365,16 @@ class YoutubeScreen(BaseScreen):
 
         if not self.videos:
             cur_tab = self.recent_queries[self.active_query_idx] if self.active_query_idx < len(self.recent_queries) else ""
-            msg = "CHƯA CÓ VIDEO YÊU THÍCH (BẤM [Y] ĐỂ THÊM)" if cur_tab in ("★ Yêu thích", "Yêu thích") else "KHÔNG CÓ VIDEO NÀO"
-            engine.draw_text(msg, engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 140, 160, 190, center_x=True, center_y=True)
+            if self.load_error:
+                engine.draw_text(tr(self.load_error), engine.font_item, state.SCREEN_W // 2,
+                                 content_y + content_h // 2 - 20, 240, 150, 120,
+                                 center_x=True, center_y=True)
+                engine.draw_text(tr("yt_retry_hint"), engine.font_footer, state.SCREEN_W // 2,
+                                 content_y + content_h // 2 + 26, 140, 160, 190,
+                                 center_x=True, center_y=True)
+            else:
+                msg = "CHƯA CÓ VIDEO YÊU THÍCH (BẤM [Y] ĐỂ THÊM)" if cur_tab in ("★ Yêu thích", "Yêu thích") else "KHÔNG CÓ VIDEO NÀO"
+                engine.draw_text(msg, engine.font_item, state.SCREEN_W // 2, content_y + content_h // 2, 140, 160, 190, center_x=True, center_y=True)
             return
 
         cols = 3
@@ -350,7 +431,7 @@ class YoutubeScreen(BaseScreen):
                 engine.draw_text("YouTube", engine.font_badge, ix + img_w // 2, iy + img_h // 2, 230, 33, 23, center_x=True, center_y=True)
 
             # Star badge if video is in favorites
-            if yt.is_favorite(v_id):
+            if v_id in self.fav_ids:
                 engine.fill_rect(ix + img_w - 28, iy + 4, 24, 20, 20, 25, 40, 220)
                 engine.draw_text("★", engine.font_badge, ix + img_w - 16, iy + 14, 255, 215, 0, center_x=True, center_y=True)
 
@@ -363,10 +444,14 @@ class YoutubeScreen(BaseScreen):
 
             # Title (Cleaned & Left-aligned with comfortable 30px line spacing)
             raw_title = v.get("disp_title") or v.get("title", "")
-            clean_title = f"{real_idx + 1}. {yt.clean_yt_text(raw_title)}"
+            clean_title = f"{real_idx + 1}. {raw_title}"
             t_lines = engine.wrap_text_to_width(clean_title, engine.font_grid_title, card_w - 16, max_lines=2)
             ty = iy + img_h + 6
             for tl in t_lines:
                 t_col = (255, 255, 255) if is_sel else (200, 215, 235)
                 engine.draw_text(tl, engine.font_grid_title, bx + 8, ty, t_col[0], t_col[1], t_col[2])
                 ty += 30
+
+        if self.loading_more:
+            engine.draw_text(tr("yt_more_loading"), engine.font_footer, state.SCREEN_W // 2,
+                             content_y + content_h - 12, 0, 220, 245, center_x=True, center_y=True)
