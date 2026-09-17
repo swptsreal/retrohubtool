@@ -733,8 +733,8 @@
     },
     {
       "path": "rh/version.py",
-      "size": 0,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "size": 1529,
+      "sha256": "0acb16b6fe093cd5fc8ae228cd606ce9a5263dff8a2285ab5d4ac8259df26f5a"
     },
     {
       "path": "rh/yt.py",
