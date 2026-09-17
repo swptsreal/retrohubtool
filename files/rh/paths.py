@@ -56,6 +56,11 @@ def get_roms_root():
 
 
 TEMP_DOWNLOAD_DIR = os.path.join(get_roms_root(), ".tmp_download")
+# Standard library folders. gameweb.py (and others) import these names, so they
+# must exist here or the whole `from rh.paths import ...` block fails.
+ROMS_DIR = get_roms_root()
+IMGS_DIR = os.path.join(SDCARD_PATH, "Imgs")
+EMUS_DIR = os.path.join(SDCARD_PATH, "Emus")
 STREAMER_SCRIPT = os.path.join(APP_DIR, "streamer.py")
 GAMEWEB_SCRIPT = os.path.join(APP_DIR, "gameweb.py")
 ASSETS_DIR = os.path.join(APP_DIR, "assets")

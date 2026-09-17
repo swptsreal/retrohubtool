@@ -583,8 +583,8 @@
     },
     {
       "path": "rh/paths.py",
-      "size": 5398,
-      "sha256": "4eceaad141d361cafa038e8ee4f9b4a3206c9db4462c86615daafb5499b767e2"
+      "size": 5666,
+      "sha256": "89a09ae8448a869cfd4d6c93579db9aed8f43ca2bc38948bedf24a9133dd2797"
     },
     {
       "path": "rh/playback.py",
