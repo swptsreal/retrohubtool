@@ -8,6 +8,7 @@ without leaving the app. Falls back to the RetroArch handoff if the engine
 cannot start.
 """
 
+import ctypes
 import threading
 import time
 
@@ -301,8 +302,13 @@ class PlayerScreen(BaseScreen):
                 from ..yt_player import log as _ytlog
                 _ytlog("[inapp] video: RenderCopy rc=%s rect=(%d,%d,%d,%d)" %
                        (rc, dx, dy, dw, dh))
-            except Exception:
-                pass
+                buf = (ctypes.c_ubyte * 4)()
+                pr = sdl2.SDL_Rect(dx + dw // 2, dy + dh // 2, 1, 1)
+                rrc = sdl2.SDL_RenderReadPixels(engine.renderer, ctypes.byref(pr),
+                                                sdl2.SDL_PIXELFORMAT_RGBA8888, buf, 4)
+                _ytlog("[inapp] video: ReadPixels rc=%s center=%s" % (rrc, bytes(buf).hex()))
+            except Exception as e:
+                _ytlog("[inapp] video: RenderCopy/ReadPixels error: %s" % e)
 
     def _draw_overlay(self, engine, area_y):
         pad = 24

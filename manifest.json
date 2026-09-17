@@ -1,12 +1,12 @@
 {
-  "version": "3.11",
+  "version": "3.12",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T17:26:24+0700",
+  "built": "2026-09-17T17:31:24+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.11: Sửa nạp YUV (PySDL2 cần POINTER(c_ubyte), không phải c_char_p) — khắc phục màn xanh lá; chống spam log lỗi.",
-    "en": "v3.11: fix YUV upload (PySDL2 needs POINTER(c_ubyte), not c_char_p) - fixes the green screen; throttle error logging."
+    "vi": "Bản 3.12: In-app video dùng RGBA8888 native (GL_RGBA, không swizzle) + log pixel đọc lại sau khi vẽ để xác nhận.",
+    "en": "v3.12: in-app video uses native RGBA8888 (GL_RGBA, no swizzle) + read-back pixel log to confirm the draw."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 24010,
-      "sha256": "933023287a5387b206c11892b9314e0e1dae4493e361a68237762e0c9fa91b10"
+      "size": 23658,
+      "sha256": "0989ecdc7aac0de5fe891d47c2fce1f0bc91bad2b8d102310391c087f03e2af6"
     },
     {
       "path": "rh/inputs.py",
@@ -643,8 +643,8 @@
     },
     {
       "path": "rh/screens/player.py",
-      "size": 13089,
-      "sha256": "0787b05c3f8161216cee97f3c790b99496ff539ea2f063975a64fb3fc86e8613"
+      "size": 13542,
+      "sha256": "4fa89fdc9521d2c3a2615eed6b15774975a7fc6b41762e29579c18c8633d9b0b"
     },
     {
       "path": "rh/screens/queue.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1530,
-      "sha256": "0d67831ffd6b7c772e98f7ecff63d326ae555c24b87901485033505a6eb69f11"
+      "sha256": "9466b4d19b6db7dfe3f7cbbc8b05a4fd10669c2ad3eb0ae5ddad4d9336754cae"
     },
     {
       "path": "rh/yt.py",
