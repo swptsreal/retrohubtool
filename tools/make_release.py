@@ -107,7 +107,7 @@ def step_3_update_manifest():
             if fn.startswith(".") or fn.endswith(".pyc") or fn == "desktop.ini":
                 continue
             fp = os.path.join(root, fn)
-            rel = os.path.relpath(fp, FILES_DIR)
+            rel = os.path.relpath(fp, FILES_DIR).replace(os.sep, "/")
             data = _read_file_bytes(fp)
             sha = hashlib.sha256(data).hexdigest()
             size = len(data)
