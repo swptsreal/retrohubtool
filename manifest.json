@@ -1,12 +1,12 @@
 {
-  "version": "3.7",
+  "version": "3.9",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T17:03:42+0700",
+  "built": "2026-09-17T17:13:14+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.7: Sửa video in-app đen — nạp texture bằng SDL_LockTexture + format ARGB8888 (tương thích GLES2), log kết quả upload/render.",
-    "en": "v3.7: Fix black in-app video - upload via SDL_LockTexture + ARGB8888 (GLES2-friendly), log upload/render results."
+    "vi": "Bản 3.9: chẩn đoán upload 2 đường (UpdateTexture + Lock/memmove), log lỗi SDL + tên renderer + nội dung frame để chốt nguyên nhân màn đen.",
+    "en": "v3.9: dual upload path diagnostics (UpdateTexture + Lock/memmove), SDL error + renderer name + frame content to pin the black-screen cause."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 22184,
-      "sha256": "4972dddf32d8041896c473666e6a726ca58c06b09369e6d004e311b34f95ca63"
+      "size": 23953,
+      "sha256": "51ce8fd6b6f0f118775c5e76061a93ffb3b4aaf8d0924451b15ec74177cd7ec7"
     },
     {
       "path": "rh/inputs.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1529,
-      "sha256": "d314cfd2c3fae0bd552e2d8d1b9f18bf61da14f5e5f874ea01f518a03f92923c"
+      "sha256": "1420c7aee63ab9fac39c10f327900d1e175a5240e5fce0bbf9bb0134f35a6e16"
     },
     {
       "path": "rh/yt.py",

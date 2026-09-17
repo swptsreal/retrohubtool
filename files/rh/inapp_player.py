@@ -227,6 +227,14 @@ class InAppPlayer:
             return False
         _log("start audio_only=%s quality=%s size=%dx%d start=%.1fs" %
              (self.audio_only, quality, self._w, self._h, self._start_pos))
+        try:
+            info = sdl2.SDL_RendererInfo()
+            if sdl2.SDL_GetRendererInfo(self.renderer, ctypes.byref(info)) == 0:
+                _log("renderer: %s flags=0x%x max=%dx%d" %
+                     (info.name.decode() if info.name else "?",
+                      info.flags, info.max_texture_width, info.max_texture_height))
+        except Exception as e:
+            _log("renderer info error: %s" % e)
 
         self._video_url = video_url or audio_url
         self._audio_url = audio_url or video_url
@@ -272,8 +280,20 @@ class InAppPlayer:
                 sdl_render.SDL_TEXTUREACCESS_STREAMING,
                 self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
-            _log("video: texture created=%s fmt=ARGB8888 %dx%d" %
-                 (bool(self.texture), self._w, self._h))
+            try:
+                sdl2.SDL_SetTextureBlendMode(self.texture, sdl2.SDL_BLENDMODE_NONE)
+                sdl2.SDL_SetTextureAlphaMod(self.texture, 255)
+                fmt = ctypes.c_uint(0)
+                acc = ctypes.c_int(0)
+                qw = ctypes.c_int(0)
+                qh = ctypes.c_int(0)
+                qrc = sdl2.SDL_QueryTexture(self.texture, ctypes.byref(fmt),
+                                            ctypes.byref(acc), ctypes.byref(qw),
+                                            ctypes.byref(qh))
+                _log("video: texture created=%s query rc=%s fmt=0x%x %dx%d" %
+                     (bool(self.texture), qrc, fmt.value, qw.value, qh.value))
+            except Exception as e:
+                _log("video: texture setup error: %s" % e)
 
         # Truncate the ffmpeg stderr logs once per session; spawns append so a
         # later seek cannot wipe the error that explains an earlier failure.
@@ -555,22 +575,34 @@ class InAppPlayer:
         if due is not None:
             ok = False
             try:
-                px = ctypes.c_void_p()
-                pitch = ctypes.c_int(0)
-                rc = sdl2.SDL_LockTexture(self.texture, None,
-                                          ctypes.byref(px), ctypes.byref(pitch))
-                if rc == 0 and px.value:
-                    ctypes.memmove(px, due, len(due))
-                    sdl2.SDL_UnlockTexture(self.texture)
-                    ok = True
-                else:
-                    rc2 = sdl2.SDL_UpdateTexture(self.texture, None,
-                                                 ctypes.c_char_p(due), self._w * 4)
-                    ok = (rc2 == 0)
+                # Primary: SDL_UpdateTexture (takes the bytes directly).
+                rc2 = sdl2.SDL_UpdateTexture(self.texture, None,
+                                             ctypes.c_char_p(due), self._w * 4)
+                ok = (rc2 == 0)
+                rc = None
+                pitch = 0
+                if not ok:
+                    # Fallback: lock/unlock + memmove to the returned address.
+                    px = ctypes.c_void_p()
+                    pitch_c = ctypes.c_int(0)
+                    rc = sdl2.SDL_LockTexture(self.texture, None,
+                                              ctypes.byref(px), ctypes.byref(pitch_c))
+                    pitch = pitch_c.value
+                    if rc == 0 and px.value:
+                        ctypes.memmove(px.value, due, len(due))
+                        sdl2.SDL_UnlockTexture(self.texture)
+                        ok = True
                 if not self._got_upload:
                     self._got_upload = True
-                    _log("video: first upload ok=%s lock_rc=%s pitch=%s audio_pos=%.2f" %
-                         (ok, rc, pitch.value, audio_pos))
+                    nz = 0
+                    for i in range(0, min(16000, len(due)), 4):
+                        if due[i] or due[i + 1] or due[i + 2]:
+                            nz += 1
+                    _log("video: first upload up_rc=%s lock_rc=%s ok=%s pitch=%s "
+                         "audio_pos=%.2f px0=%s mid=%s rgb_nz=%d err=%r" %
+                         (rc2, rc, ok, pitch, audio_pos,
+                          due[:4].hex(), due[len(due) // 2:len(due) // 2 + 4].hex(),
+                          nz, sdl2.SDL_GetError().decode()))
             except Exception as e:
                 _log("video: upload error: %s" % e)
             if ok:
