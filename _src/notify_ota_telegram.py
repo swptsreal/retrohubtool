@@ -8,8 +8,13 @@ import ssl
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TELEGRAM_BOT_TOKEN = "8843439406:AAEtTnuMk68ilAniAxj8Kl3uTKZmVKEVDDs"
-TELEGRAM_GROUP_CHAT_ID = "-1003890413445"
+TELEGRAM_BOT_TOKEN = os.environ.get(
+    "RETROHUB_TELEGRAM_BOT_TOKEN",
+    "8843439406:AAEtTnuMk68ilAniAxj8Kl3uTKZmVKEVDDs",
+)
+TELEGRAM_GROUP_CHAT_ID = os.environ.get(
+    "RETROHUB_TELEGRAM_GROUP_CHAT_ID", "-1003890413445"
+)
 
 def send_ota_notification(version=None, note_vi=None):
     manifest_path = os.path.join(ROOT, "manifest.json")

@@ -40,6 +40,12 @@ pending_catalog_notice = ""
 enable_logging = False
 # Random Device ID duy nhat cho tung may (vi du: RH-8D3F)
 device_id = ""
+# YouTube playback backend: "auto" | "inapp" | "retroarch".
+player_backend = "retroarch"
+# Preferred video height for the in-app player: "360" | "480" | "720".
+video_quality = "360"
+# Start YouTube playback in audio-only mode by default.
+audio_only_default = False
 
 _needs_save_id = False
 if os.path.exists(SETTINGS_FILE):
@@ -57,6 +63,9 @@ if os.path.exists(SETTINGS_FILE):
             pending_update = cfg.get("pending_update", "") or ""
             catalog_sha = cfg.get("catalog_sha", "") or ""
             pending_catalog_notice = cfg.get("pending_catalog_notice", "") or ""
+            player_backend = cfg.get("player_backend", "retroarch") or "retroarch"
+            video_quality = str(cfg.get("video_quality", "360") or "360")
+            audio_only_default = cfg.get("audio_only_default", False)
     except:
         current_lang = "EN"
         downloaded_view_mode = "grid"
@@ -91,7 +100,10 @@ def save_settings():
                     "update_url": update_url,
                     "pending_update": pending_update,
                     "catalog_sha": catalog_sha,
-                    "pending_catalog_notice": pending_catalog_notice
+                    "pending_catalog_notice": pending_catalog_notice,
+                    "player_backend": player_backend,
+                    "video_quality": video_quality,
+                    "audio_only_default": audio_only_default
                 }, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())

@@ -13,16 +13,14 @@ from . import state
 from .paths import SDCARD_PATH
 from .sysinfo import get_ip, is_proc_running
 from .services import find_ssh_client
+from .config import (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+                     TELEGRAM_GROUP_CHAT_ID, TELEGRAM_NETPLAY_THREAD_ID)
 
 NETPLAY_PORT = 55435
 NETPLAY_PID_FILE = "/tmp/netplay_tunnel.pid"
 NETPLAY_INFO_FILE = "/tmp/netplay_info.json"
 NETPLAY_LOG_FILE = "/tmp/netplay_tunnel.log"
 
-TELEGRAM_BOT_TOKEN = "8843439406:AAEtTnuMk68ilAniAxj8Kl3uTKZmVKEVDDs"
-TELEGRAM_CHAT_ID = "663642384"
-TELEGRAM_GROUP_CHAT_ID = "-1003890413445"
-TELEGRAM_NETPLAY_THREAD_ID = 1175
 TELEGRAM_CHAT_ID_CACHE = "/tmp/netplay_tele_chat_id.txt"
 
 def resolve_netplay_telegram_chat_id():

@@ -19,6 +19,29 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES_DIR = os.path.join(ROOT, "files")
 MANIFEST_PATH = os.path.join(ROOT, "manifest.json")
 
+# Text files must be stored with LF, not CRLF: a CRLF launch.sh breaks `sh` on
+# the device ("\r: not found") and CRLF hashes would not match the LF manifest.
+# Building on a Windows checkout with core.autocrlf=true would otherwise ship
+# broken scripts and wrong hashes.
+TEXT_EXTS = {".py", ".sh", ".json", ".cfg", ".txt", ".md", ".html", ".css",
+             ".js", ".yml", ".yaml", ".toml", ".ini", ".conf", ".license"}
+
+
+def _is_text(name):
+    ext = os.path.splitext(name)[1].lower()
+    if ext in TEXT_EXTS:
+        return True
+    low = name.lower()
+    return low in ("license", "notice") or low.endswith(".license")
+
+
+def _read_file_bytes(path):
+    with open(path, "rb") as fh:
+        data = fh.read()
+    if _is_text(os.path.basename(path)):
+        data = data.replace(b"\r\n", b"\n")
+    return data
+
 
 def step_1_syntax_check():
     print("[1/5] Kiem tra cu phap cac file Python...")
@@ -84,9 +107,8 @@ def step_3_update_manifest():
             if fn.startswith(".") or fn.endswith(".pyc") or fn == "desktop.ini":
                 continue
             fp = os.path.join(root, fn)
-            rel = os.path.relpath(fp, FILES_DIR)
-            with open(fp, "rb") as fh:
-                data = fh.read()
+            rel = os.path.relpath(fp, FILES_DIR).replace(os.sep, "/")
+            data = _read_file_bytes(fp)
             sha = hashlib.sha256(data).hexdigest()
             size = len(data)
 
@@ -108,8 +130,7 @@ def step_3_update_manifest():
         rel_url = rf.get("url", "")
         local_fp = os.path.join(ROOT, rel_url)
         if os.path.isfile(local_fp):
-            with open(local_fp, "rb") as fh:
-                data = fh.read()
+            data = _read_file_bytes(local_fp)
             rf["size"] = len(data)
             rf["sha256"] = hashlib.sha256(data).hexdigest()
 
@@ -133,9 +154,9 @@ def step_4_package_dist():
                     if fn.startswith(".") or fn.endswith(".pyc"):
                         continue
                     fp = os.path.join(root, fn)
-                    rel = os.path.relpath(fp, FILES_DIR)
+                    rel = os.path.relpath(fp, FILES_DIR).replace("\\", "/")
                     arcname = f"{prefix}/{rel}" if prefix else rel
-                    z.write(fp, arcname)
+                    z.writestr(arcname, _read_file_bytes(fp))
 
     make_zip(os.path.join(dist_dir, f"RetroHub-{ver}-full.zip"), "Apps/RetroHub")
     make_zip(os.path.join(dist_dir, f"RetroHub-{ver}.zip"), "Apps/RetroHub")

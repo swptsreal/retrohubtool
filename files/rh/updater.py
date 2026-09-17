@@ -20,15 +20,18 @@ import urllib.error
 import urllib.request
 
 from . import state
+from .config import (OTA_BASE_URL as UPDATE_BASE_URL,
+                     CDN_BASE_URL,
+                     GITHUB_RAW_BASE_URL,
+                     GHPROXY_BASE_URL)
 from .paths import APP_DIR, SDCARD_PATH
 from .storage import free_space as _free_space, human_bytes as _human
 from .version import APP_VERSION, is_newer
 
-# Where releases are published. Overridable from settings.json so a repo move
-# does not need a rebuild.
-UPDATE_BASE_URL = "https://raw.githubusercontent.com/nguyenxuanhoa493/repohubtool/main"
-CDN_BASE_URL = "https://cdn.jsdelivr.net/gh/nguyenxuanhoa493/repohubtool@main"
-GHPROXY_BASE_URL = "https://ghproxy.net/" + UPDATE_BASE_URL
+# Release endpoints come from rh.config (env-overridable). state.update_url can
+# still override at runtime from settings.json so a repo move needs no rebuild.
+# The OTA worker caches files (ignoring the app's ?_t= cache-buster) and never
+# caches the manifest; GitHub raw / jsDelivr / ghproxy are fallbacks.
 
 # Nhung dinh dang jsDelivr chan (HTTP 403 Forbidden) thi bo qua khong goi CDN
 CDN_EXCLUDED_EXTS = (".jar", ".zip", ".exe")
@@ -118,12 +121,14 @@ def candidate_base_urls(rel_path=""):
     candidates = []
     # Uu tien GHProxy va GitHub Raw cho manifest.json de lay thong tin cap nhat real-time
     if rel_path.lower().endswith(CDN_EXCLUDED_EXTS) or "manifest" in rel_path.lower() or rel_path.lower().endswith(".json"):
-        candidates.append(GHPROXY_BASE_URL)
         candidates.append(UPDATE_BASE_URL)
+        candidates.append(GHPROXY_BASE_URL)
+        candidates.append(GITHUB_RAW_BASE_URL)
     else:
         candidates.append(CDN_BASE_URL)
-        candidates.append(GHPROXY_BASE_URL)
         candidates.append(UPDATE_BASE_URL)
+        candidates.append(GHPROXY_BASE_URL)
+        candidates.append(GITHUB_RAW_BASE_URL)
     return candidates
 
 

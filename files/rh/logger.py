@@ -26,10 +26,8 @@ try:
 except Exception:
     _SSL_CONTEXT = None
 
+from .config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from .paths import SDCARD_PATH, is_nextui
-
-TELEGRAM_BOT_TOKEN = "8843439406:AAEtTnuMk68ilAniAxj8Kl3uTKZmVKEVDDs"
-TELEGRAM_CHAT_ID = "663642384"
 
 LOG_DIR = os.path.join(SDCARD_PATH, "RetroHub", "logs")
 LOG_FILE = os.path.join(LOG_DIR, "retrohub.log")
@@ -119,6 +117,9 @@ def get_log_size_str():
         java_log = os.path.join(SDCARD_PATH, "RetroHub-java.log")
         if os.path.isfile(java_log):
             sz += os.path.getsize(java_log)
+        yt_log = os.path.join(SDCARD_PATH, "RetroHub-yt.log")
+        if os.path.isfile(yt_log):
+            sz += os.path.getsize(yt_log)
         if sz >= 1024 * 1024:
             return f"{sz / (1024 * 1024):.1f} MB"
         elif sz >= 1024:
@@ -149,6 +150,13 @@ def clear_log():
             if os.path.isfile(java_log):
                 with open(java_log, "w", encoding="utf-8") as f:
                     f.write("")
+            # YouTube / in-app player logs so a fresh session is captured clean.
+            for extra in (os.path.join(SDCARD_PATH, "RetroHub-yt.log"),
+                          "/tmp/retrohub_yt.log", "/tmp/rh_ffmpeg_a.log",
+                          "/tmp/rh_ffmpeg_v.log", "/tmp/yt_last_error.txt"):
+                if os.path.isfile(extra):
+                    with open(extra, "w", encoding="utf-8") as f:
+                        f.write("")
         except Exception:
             pass
     dev_id = get_device_id()
@@ -721,6 +729,36 @@ def _get_java_diagnostics(max_lines=100):
     return res
 
 
+def _tail_lines(path, max_lines):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.read().splitlines()
+        return lines[-max_lines:]
+    except Exception:
+        return []
+
+
+def _get_youtube_diagnostics():
+    """YouTube / in-app player logs: RetroHub-yt.log + ffmpeg stderr + last error."""
+    out = []
+    yt_log = os.path.join(SDCARD_PATH, "RetroHub-yt.log")
+    if os.path.isfile(yt_log):
+        out.append(f"[RetroHub-yt.log] {yt_log} ({os.path.getsize(yt_log)} bytes)")
+        # Drop the noisy libretro av_log spam; keep [rh.yt_player]/[inapp] lines.
+        kept = [l for l in _tail_lines(yt_log, 600) if "av_log:" not in l]
+        out.extend(kept[-250:])
+    else:
+        out.append("[RetroHub-yt.log] (khong co)")
+
+    for p in ("/tmp/retrohub_yt.log", "/tmp/rh_ffmpeg_a.log",
+              "/tmp/rh_ffmpeg_v.log", "/tmp/yt_last_error.txt"):
+        if os.path.isfile(p):
+            out.append("")
+            out.append(f"[{p}]")
+            out.extend(_tail_lines(p, 150))
+    return out
+
+
 def generate_debug_report():
     """Tạo file báo cáo chẩn đoán tổng hợp toàn diện tại /mnt/SDCARD/RetroHub_Debug_Report.txt."""
     diag = get_system_diagnostics()
@@ -785,6 +823,14 @@ def generate_debug_report():
         ""
     ])
     report_lines.extend(_get_installed_cores_diagnostics())
+    report_lines.extend([
+        "",
+        "==================================================================",
+        "        NHAT KY YOUTUBE & IN-APP PLAYER (rh.yt_player / ffmpeg)   ",
+        "==================================================================",
+        ""
+    ])
+    report_lines.extend(_get_youtube_diagnostics())
     report_lines.extend([
         "",
         "==================================================================",

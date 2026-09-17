@@ -1,12 +1,12 @@
 {
-  "version": "2.27",
+  "version": "3.14",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-16T20:06:07+0700",
-  "base_url": "https://raw.githubusercontent.com/nguyenxuanhoa493/repohubtool/main",
+  "built": "2026-09-17T21:42:26+0700",
+  "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bổ sung Thanh tiến trình trực quan & Phần trăm tải tệp thời gian thực trong Modal Cập nhật",
-    "en": "Visual Progress Bar & Real-time Percentage for OTA Update Downloads"
+    "vi": "Bản 3.14: trình phát YouTube mặc định chuyển sang RetroArch (seek/resume tức thời qua HTTP Range, không cần đệm); trình phát trong app seek bằng yt-dlp section và đã hết lỗi màn hình đen.",
+    "en": "v3.14: YouTube now plays through RetroArch by default (instant Range-based seek/resume, no buffering); the in-app player seeks via yt-dlp sections and the black-screen bug is fixed."
   },
   "remove": [
     "app.pyc",
@@ -143,8 +143,8 @@
       {
         "path": "NOTICE.txt",
         "url": "files/emus/JAVA/NOTICE.txt",
-        "size": 6657,
-        "sha256": "faf54b3361b33822fbcdd44f4de2073441feee1ffb5255cb0012d5a8acc23219"
+        "size": 6651,
+        "sha256": "f15b64900c045553a7d543c292b72a74226e2ee12f98bb551be6de1c66d661fc"
       },
       {
         "path": "config.json",
@@ -203,8 +203,8 @@
     },
     {
       "path": "app.py",
-      "size": 3726,
-      "sha256": "1d3f4890b0ebeb18b8c86b00ec31257317dd53966c3febc048acf6af4c9a44a1"
+      "size": 4024,
+      "sha256": "83aff49fa31f2a49ff64875cb173868bd812d7ee5a96e17088ca04943097dbc0"
     },
     {
       "path": "assets/fallback.ttf",
@@ -243,8 +243,8 @@
     },
     {
       "path": "bin/7zz-License.txt",
-      "size": 6029,
-      "sha256": "99df5a516035baca9f2e8095977599d4a4340f58ba900f870238943996014f53"
+      "size": 5885,
+      "sha256": "bfcb66ce77b67efd57465ecce23425841e1defba4307fcb012080cccfc11a870"
     },
     {
       "path": "bin/7zzs",
@@ -268,8 +268,8 @@
     },
     {
       "path": "emus/JAVA/NOTICE.txt",
-      "size": 6657,
-      "sha256": "faf54b3361b33822fbcdd44f4de2073441feee1ffb5255cb0012d5a8acc23219"
+      "size": 6651,
+      "sha256": "f15b64900c045553a7d543c292b72a74226e2ee12f98bb551be6de1c66d661fc"
     },
     {
       "path": "emus/JAVA/config.json",
@@ -363,8 +363,8 @@
     },
     {
       "path": "gameweb.py",
-      "size": 138071,
-      "sha256": "6b4928734138bda8d6aa8b229784e7bb4fbb545f3e099696598cb47fe93e33d0"
+      "size": 138502,
+      "sha256": "ff4143727150f1fde9b44e62631c41c9413e7be8a171aca9e8c06149bd219f5b"
     },
     {
       "path": "icon.png",
@@ -373,8 +373,8 @@
     },
     {
       "path": "launch.sh",
-      "size": 9751,
-      "sha256": "4f5331b3496234003bca0d43bfa72b773cca041c838750522ec03d1d40ccb6b2"
+      "size": 10358,
+      "sha256": "56a79df60140342d8ea114a27975a7cbc169089459eac90de44610293dfa9ba0"
     },
     {
       "path": "led_daemon.py",
@@ -402,6 +402,11 @@
       "sha256": "ec758260ce493499babaa5257527dfc8f710c16cbe4293c4e3bb1bf21b5ba774"
     },
     {
+      "path": "rh/backlight.py",
+      "size": 1707,
+      "sha256": "e62c35ffab3532381a8d4dd6fdbafd9664db7dcfbcfe5ceeeb190e4d613c7fe4"
+    },
+    {
       "path": "rh/boxart.py",
       "size": 1374,
       "sha256": "8c56849409a2a36c1c5265bf682a4cb1e3beb6d3c5d59823b501e2c3c9c9fd78"
@@ -418,13 +423,18 @@
     },
     {
       "path": "rh/cheat_manager.py",
-      "size": 25797,
-      "sha256": "cc96371ed2cf749ebce6ed1c378909ac76b26d71d7c4259ad0626a7067291353"
+      "size": 25717,
+      "sha256": "e97466b0a57db25054dc9a6278715ee0b4db9c2750e8dbb27e674f113bfb77eb"
     },
     {
       "path": "rh/cheats_index.json.gz",
       "size": 268664,
       "sha256": "bc49edf69ff9847bf167bf6e00960eb91b3317b7d396b3b70ac4999fd4b30dc7"
+    },
+    {
+      "path": "rh/config.py",
+      "size": 1694,
+      "sha256": "8c42514e7f744023dbab27d0c28726f41be9dae60a5f45f474a1f95f100d7798"
     },
     {
       "path": "rh/corepicker.py",
@@ -443,8 +453,8 @@
     },
     {
       "path": "rh/engine.py",
-      "size": 18652,
-      "sha256": "5d3fe1bcb34aed67807db2480bbeb159100483f56388f9d5c3947c100faf262c"
+      "size": 19233,
+      "sha256": "7635b763c03f7a642cb2b93ad6adbf4b39881f44a7d2db317460bc5bc9bc0252"
     },
     {
       "path": "rh/env.py",
@@ -458,8 +468,13 @@
     },
     {
       "path": "rh/i18n.py",
-      "size": 51004,
-      "sha256": "fba0d30768948709bbf82cef9bcb8d604cd705c849bab91d17c887b2f73480ff"
+      "size": 56045,
+      "sha256": "0dc4a76a74f0fcc2d30be37944700fab0848ce4ac1b985d4d41adac89404d5a6"
+    },
+    {
+      "path": "rh/inapp_player.py",
+      "size": 37783,
+      "sha256": "fb5fa83d503a162dfae1e7ffab3149518fbe7022de208d9f95de6fcc3bf46cce"
     },
     {
       "path": "rh/inputs.py",
@@ -508,8 +523,8 @@
     },
     {
       "path": "rh/logger.py",
-      "size": 35827,
-      "sha256": "e83f47d6568d35f2d976a2b7b88f6ec1b67ef20af30dbd5dc07f5a478903298f"
+      "size": 37775,
+      "sha256": "7b6abf7e86a19aa45653f95e1719224c638301550ded2ca447cee3a65d0d0750"
     },
     {
       "path": "rh/media.py",
@@ -518,8 +533,8 @@
     },
     {
       "path": "rh/modals/__init__.py",
-      "size": 377,
-      "sha256": "e4a3a5e94287f980269a946c84636dc4bd8cedc8813ac977313e4cf6b6939a47"
+      "size": 335,
+      "sha256": "8de276f955ed79a441c953b2b8aa86f078153517d657fd595d86cc493eb642ba"
     },
     {
       "path": "rh/modals/alphabet.py",
@@ -533,8 +548,8 @@
     },
     {
       "path": "rh/modals/common.py",
-      "size": 16312,
-      "sha256": "a531a876d3f4a81e2518b20f4fda04d111c3f2efa1d29e9be96fdad574a8346f"
+      "size": 12773,
+      "sha256": "0a4fb60d2a85e0c96743816830ec97245a6b00ab676d3df4747168c1cb6c8eb0"
     },
     {
       "path": "rh/modals/game_action.py",
@@ -563,13 +578,23 @@
     },
     {
       "path": "rh/netplay.py",
-      "size": 13475,
-      "sha256": "8026dcc259e3dbe109d6365cfe069e8f5a0708549cd38ad99ad9fcf35efeb896"
+      "size": 13430,
+      "sha256": "cc40580f54f198566ff4445bcba45d6b1bba85c03037546fdffa5addea476634"
     },
     {
       "path": "rh/paths.py",
-      "size": 5168,
-      "sha256": "a92a701469bb78ac447f9332f5db6eb7d715f3acdffaec88ef5bf9268f181db9"
+      "size": 5666,
+      "sha256": "89a09ae8448a869cfd4d6c93579db9aed8f43ca2bc38948bedf24a9133dd2797"
+    },
+    {
+      "path": "rh/playback.py",
+      "size": 11068,
+      "sha256": "b080717235be40295be8d20cd75a2e5668ba59816d637d06e92019edd28fd910"
+    },
+    {
+      "path": "rh/player.py",
+      "size": 6816,
+      "sha256": "152232accc00fe505ad93fc18b6e81c7144f68ddd392d231c48ff81c65df840e"
     },
     {
       "path": "rh/romfiles.py",
@@ -617,9 +642,19 @@
       "sha256": "50c51dde0510d7a835ee8f6e7cbc39bf8d6a93247a926fe37ed1d6b02eddee8a"
     },
     {
+      "path": "rh/screens/player.py",
+      "size": 19407,
+      "sha256": "2a7e5000deb184866392ce516add63467d06228e65af310b720089e67070e0e6"
+    },
+    {
+      "path": "rh/screens/queue.py",
+      "size": 6437,
+      "sha256": "f32d80045de7077b8e82724b55534bc1e3e6ff4ac9698b956b3d081745a7667a"
+    },
+    {
       "path": "rh/screens/settings.py",
-      "size": 7568,
-      "sha256": "4cd72a390537290d3ffd5b4d5a5422dacfe4a95286f9bd4d026cd076149a7994"
+      "size": 8898,
+      "sha256": "e3ea3014b50c2c39d23397d280d4185f3372b18e6effd7b5f9e48946cc338032"
     },
     {
       "path": "rh/screens/splash.py",
@@ -637,14 +672,19 @@
       "sha256": "232d08b631dcda5742324f44b7b459bced23b65e32fd837ba4d197c1b27bff9e"
     },
     {
+      "path": "rh/screens/watch.py",
+      "size": 13095,
+      "sha256": "038d7cb131cc9a6d478a7e163763c596601c3a32d7fe07641b60dbffcc940414"
+    },
+    {
       "path": "rh/screens/youtube.py",
-      "size": 15744,
-      "sha256": "76041f496d9674f81b2781ee978e5571ab12007348a2ddaad4d47ca25925d847"
+      "size": 19431,
+      "sha256": "959da9d2d4bfbe2217558605761f31007e96be879f2487a0ef0adb6a8cf18d4b"
     },
     {
       "path": "rh/services.py",
-      "size": 24908,
-      "sha256": "714b0ee27127e7f9fa787d6fe0d6391fa4a9a5c28a528a97f1006c5254b0a55b"
+      "size": 24846,
+      "sha256": "46705d8ec216e54c2560b2da902f5079c43467fd0b09d645595e7044b7d379a4"
     },
     {
       "path": "rh/splash.py",
@@ -653,8 +693,8 @@
     },
     {
       "path": "rh/state.py",
-      "size": 4896,
-      "sha256": "f667f80b618e4701090b23c894bf90a2d49559f6eb3a82966e099bd105911128"
+      "size": 5556,
+      "sha256": "52550ff223f79e067d65c3ce40efc267926f8f89a6baf5e8b1a29a9d0c842149"
     },
     {
       "path": "rh/storage.py",
@@ -688,23 +728,23 @@
     },
     {
       "path": "rh/updater.py",
-      "size": 27632,
-      "sha256": "87397f376b66f50c8f182319e6503329225f150ee85b1eea87a8fb3c3f3c1c9f"
+      "size": 27873,
+      "sha256": "ef6e57ee10fafeba45a8a6de41eed1dd159c4dd38da1cd9d2f40df605c2d8461"
     },
     {
       "path": "rh/version.py",
-      "size": 855,
-      "sha256": "ea36f146b4e3eb4e1bc24fb0d93911323f14d11fc3a1094d2d905013830a65f7"
+      "size": 1530,
+      "sha256": "33fe3edbdbb070cc5909ef124b5c32cb263ba15a952476e8bad3f61ce14cf3b6"
     },
     {
       "path": "rh/yt.py",
-      "size": 36658,
-      "sha256": "1cf832c8e7a698f538ee447593fb50e4c781b520d611d9d1375ffe2d86558f2a"
+      "size": 52509,
+      "sha256": "061a14a35301b26f6ac7cf916858079f23861d9e20524f3043559039c26f054b"
     },
     {
       "path": "rh/yt_player.py",
-      "size": 16795,
-      "sha256": "a91119067cde545541e9b606d8f5ae2a869025dfe4ed7093b186103d54655b7f"
+      "size": 21016,
+      "sha256": "8d8fec020007bc2865b734c93ce5bfabea8b3409fe345f571f141b1a991ed787"
     },
     {
       "path": "settings.json",
@@ -1097,6 +1137,6 @@
       "sha256": "399ba88cd119bdf1a5bcbf95c695216ed283e86daf1d72e4a6e153ac79dc62c1"
     }
   ],
-  "notes": "Tích hợp hộp thoại Cập nhật OTA tự động (UpdateModal), sửa lỗi kiểm tra cập nhật thủ công trong Cài đặt & tối ưu luồng nâng cấp ứng dụng ngầm",
-  "notes_en": "Integrate full-featured OTA UpdateModal dialog, fix manual update check in Settings & optimize background self-updater"
+  "notes": "Đổi mặc định trình phát YouTube sang RetroArch để seek/resume ổn định trên mọi tốc độ mạng; trình phát trong app vẫn dùng được (seek bằng yt-dlp section, cache metadata 1 giờ); sửa lỗi màn hình đen do sai pixel format và đồng bộ thanh thời gian với hình.",
+  "notes_en": "Default YouTube player switched to RetroArch for reliable seek/resume on any network speed; the in-app player remains available (yt-dlp section seeking, 1-hour metadata cache); fixed the black-screen pixel format bug and the progress bar/hand-in-hand sync."
 }

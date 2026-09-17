@@ -18,7 +18,7 @@ import json
 import os
 import re
 
-from build import CSS, DOMAIN, navlinks_for
+from build import CSS, DOMAIN, navlinks_for, apply_env_literals
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -26,6 +26,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Headlines are verbatim from each release's own note. Details are only filled
 # in where the change is worth more than a line; an empty list is honest.
 RELEASES = [
+    ("3.14", "2026-09-17",
+     ("v3.14: YouTube now plays through RetroArch by default (instant Range-based seek/resume, no buffering); the in-app player seeks via yt-dlp sections and the black-screen bug is fixed.",
+      "Bản 3.14: trình phát YouTube mặc định chuyển sang RetroArch (seek/resume tức thời qua HTTP Range, không cần đệm); trình phát trong app seek bằng yt-dlp section và đã hết lỗi màn hình đen."),
+     [("Default YouTube player switched to RetroArch: seek and resume go through the local Range proxy, so they no longer depend on network speed or on buffering the stream to disk.",
+       "Đổi mặc định trình phát YouTube sang RetroArch: seek/resume qua HTTP Range của proxy local, không còn phụ thuộc tốc độ mạng và không cần đệm ra thẻ."),
+      ("In-app player kept as an option: seeking and resuming fetch the exact section with yt-dlp (fragment byte ranges) plus a 1-hour metadata cache, instead of re-reading the stream from the start.",
+       "Trình phát trong app vẫn giữ: seek/resume tải đúng đoạn bằng yt-dlp (byte range của fragment) kèm cache metadata 1 giờ, thay vì đọc lại stream từ đầu."),
+      ("Fixed the black screen (sound but no picture) by matching the SDL texture layout to ffmpeg's pixel format; the progress bar and the picture now start together after a seek.",
+       "Sửa lỗi màn hình đen (có tiếng, không hình) bằng cách khớp layout texture SDL với pixel format của ffmpeg; thanh thời gian và hình khởi động cùng nhau sau khi tua."),
+      ("Stream URL caching for the in-app player and the remaining hard-coded UI strings translated (favorites, empty states, search prompt).",
+       "Cache URL stream cho trình phát trong app và dịch nốt các chuỗi giao diện còn hardcode (yêu thích, trạng thái rỗng, ô tìm kiếm).")]),
     ("2.27", "2026-09-16",
      ("Visual Progress Bar & Real-time Percentage for OTA Update Downloads",
       "Bổ sung Thanh tiến trình trực quan & Phần trăm tải tệp thời gian thực trong Modal Cập nhật"),
@@ -812,7 +823,7 @@ T = {
   "back": "Back to homepage",
   "latest": "Latest",
   "foot": ('Looking for source commits? The repository and full release history '
-           'live on <a href="https://github.com/nguyenxuanhoa493/repohubtool/releases">GitHub</a>.'),
+           'live on <a href="https://github.com/swptsreal/retrohubtool/releases">GitHub</a>.'),
  },
  "vi": {
   "lang": "vi", "other": "en", "other_name": "English",
@@ -828,7 +839,7 @@ T = {
   "latest": "Mới nhất",
   "foot": ('Cần xem lịch sử mã nguồn? Toàn bộ commit và tệp phân phối '
            'của từng phiên bản nằm trên '
-           '<a href="https://github.com/nguyenxuanhoa493/repohubtool/releases">GitHub</a>.'),
+           '<a href="https://github.com/swptsreal/retrohubtool/releases">GitHub</a>.'),
  },
 }
 
@@ -954,6 +965,8 @@ def render(lang):
             out = out.replace("{%s}" % k, v)
 
     left = re.findall(r"\{([a-zA-Z_]+)\}", out)
+    out = apply_env_literals(out)
+
     if left:
         raise SystemExit("con cho trong chua thay: %s" % sorted(set(left)))
     return out

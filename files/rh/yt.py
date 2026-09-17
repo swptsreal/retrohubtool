@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -45,9 +46,20 @@ from rh.paths import (
     YT_FEED_FALLBACK_FILE,
     YT_FAVORITES_FILE,
     YT_FAVORITES_FALLBACK_FILE,
+    SDCARD_PATH,
 )
+from .neterrors import classify_error as _classify_error
+
+# Last network error key (an i18n key from rh.neterrors), so the UI can explain
+# an empty result instead of just saying "no videos". Cleared on every fetch.
+_LAST_ERROR = ""
+
+
+def get_last_error() -> str:
+    return _LAST_ERROR
 
 INNERTUBE_URL = "https://www.youtube.com/youtubei/v1"
+INNERTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 DEFAULT_QUERIES = ["Music", "KPOP", "USUK", "Tiktok"]
@@ -251,6 +263,18 @@ WEB_CONTEXT = {
     }
 }
 
+# Fallback client used when the web client returns nothing (some networks/IPs
+# get a consent or throttled response for WEB).
+ANDROID_CONTEXT = {
+    "client": {
+        "clientName": "ANDROID",
+        "clientVersion": "19.09.37",
+        "androidSdkVersion": 30,
+        "hl": "vi",
+        "gl": "VN",
+    }
+}
+
 
 def _get_ssl_context():
     """Create unverified SSL context for embedded Linux devices without root CAs."""
@@ -261,8 +285,12 @@ def _get_ssl_context():
 
 
 def _make_request(endpoint: str, payload: dict, timeout: int = 7) -> dict:
-    """Send JSON POST request to YouTube InnerTube endpoint with SSL bypass."""
-    url = f"{INNERTUBE_URL}/{endpoint}?prettyPrint=false"
+    """Send JSON POST request to YouTube InnerTube endpoint with SSL bypass.
+
+    Includes the public web API key and the client headers YouTube expects;
+    without them some networks get a consent/error page instead of JSON.
+    """
+    url = f"{INNERTUBE_URL}/{endpoint}?key={INNERTUBE_API_KEY}&prettyPrint=false"
     req_data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -270,6 +298,11 @@ def _make_request(endpoint: str, payload: dict, timeout: int = 7) -> dict:
         headers={
             "Content-Type": "application/json",
             "User-Agent": USER_AGENT,
+            "Origin": "https://www.youtube.com",
+            "Referer": "https://www.youtube.com/",
+            "Accept-Language": "vi,en;q=0.9",
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": WEB_CONTEXT["client"]["clientVersion"],
         },
     )
     ctx = _get_ssl_context()
@@ -283,7 +316,7 @@ def _extract_videos_from_json(node, found_list: list, limit: int = 30):
         return
 
     if isinstance(node, dict):
-        v = node.get("videoRenderer") or node.get("gridVideoRenderer")
+        v = node.get("videoRenderer") or node.get("gridVideoRenderer") or node.get("compactVideoRenderer")
         if v:
             vid = v.get("videoId")
             if vid:
@@ -415,9 +448,11 @@ def search_youtube(query: str, limit: int = 24) -> list:
     Returns a list of dicts:
         [{'id': str, 'title': str, 'channel': str, 'duration': str, 'thumb': str, 'pub': str, 'age': float}]
     """
+    global _LAST_ERROR
     clean_query = (query or "").strip()
     if not clean_query:
         return []
+    _LAST_ERROR = ""
 
     eff_query = get_effective_query(clean_query)
 
@@ -430,6 +465,7 @@ def search_youtube(query: str, limit: int = 24) -> list:
         data = _make_request("search", payload)
     except Exception as e:
         print(f"[rh.yt] Search error for '{eff_query}': {e}")
+        _LAST_ERROR = _classify_error(e)
         return []
 
     results = []
@@ -437,6 +473,16 @@ def search_youtube(query: str, limit: int = 24) -> list:
         _extract_videos_from_json(data, results, limit=limit)
     except Exception as e:
         print(f"[rh.yt] Extract videos error: {e}")
+
+    # The web client sometimes returns an empty shell (consent/throttling).
+    # Retry once with the Android client before giving up.
+    if not results:
+        try:
+            data2 = _make_request("search", {"context": ANDROID_CONTEXT, "query": eff_query})
+            _extract_videos_from_json(data2, results, limit=limit)
+        except Exception as e:
+            print(f"[rh.yt] Android fallback error: {e}")
+            _LAST_ERROR = _classify_error(e)
 
     # Extract and store continuation token for "Load more" at the end of the list
     cont_token = _find_continuation_token(data)
@@ -468,6 +514,101 @@ def get_trending(limit: int = 24) -> list:
     if items:
         save_feed_cache("Music", items)
     return items
+
+
+def _deep_find(node, key):
+    """Return the first value stored under *key* anywhere in a nested JSON tree."""
+    if isinstance(node, dict):
+        if key in node:
+            return node[key]
+        for val in node.values():
+            found = _deep_find(val, key)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for item in node:
+            found = _deep_find(item, key)
+            if found is not None:
+                return found
+    return None
+
+
+def fetch_watch_metadata(video_id: str) -> dict:
+    """Fetch a video's detail page: title, channel, views, description, related.
+
+    Uses the InnerTube `next` endpoint. Returns None on network failure so the
+    caller can fall back to the data already known from the grid.
+    """
+    if not video_id:
+        return None
+
+    data = None
+    for ctx in (WEB_CONTEXT, ANDROID_CONTEXT):
+        try:
+            data = _make_request("next", {"context": ctx, "videoId": video_id}, timeout=7)
+        except Exception as e:
+            print(f"[rh.yt] Watch metadata error for {video_id}: {e}")
+            data = None
+            continue
+        if data and _deep_find(data, "videoPrimaryInfoRenderer"):
+            break
+        data = None
+    if not data:
+        return None
+
+    primary = _deep_find(data, "videoPrimaryInfoRenderer") or {}
+    secondary = _deep_find(data, "videoSecondaryInfoRenderer") or {}
+
+    title_runs = primary.get("title", {}).get("runs", [])
+    title = title_runs[0].get("text", "") if title_runs else primary.get("title", {}).get("simpleText", "")
+
+    views = ""
+    vc = primary.get("viewCount", {})
+    if isinstance(vc, dict):
+        views = (
+            vc.get("videoViewCountRenderer", {}).get("viewCount", {}).get("simpleText", "")
+            or vc.get("simpleText", "")
+        )
+
+    published = primary.get("dateText", {}).get("simpleText", "")
+
+    owner = secondary.get("owner", {}).get("videoOwnerRenderer", {})
+    o_runs = owner.get("title", {}).get("runs", [])
+    channel = o_runs[0].get("text", "") if o_runs else ""
+
+    description = secondary.get("attributedDescription", {}).get("content", "")
+    if not description:
+        d_runs = secondary.get("description", {}).get("runs", [])
+        description = " ".join(r.get("text", "") for r in d_runs)
+
+    # Related videos now come back as lockupViewModel (not videoRenderer), so
+    # use the playlist extractor which understands both shapes. Keep only real
+    # 11-char video IDs (drops channel/playlist lockups) and the current video.
+    related = []
+    try:
+        _extract_playlist_videos_from_json(data, related, limit=24)
+    except Exception:
+        pass
+    if not related:
+        try:
+            _extract_videos_from_json(data, related, limit=13)
+        except Exception:
+            pass
+    related = [r for r in related
+               if r.get("id") and r.get("id") != video_id and len(r.get("id", "")) == 11][:12]
+    for r in related:
+        ch = r.get("channel", "")
+        r["pub"] = ""
+        r["disp_info"] = ch if len(ch) <= 34 else ch[:32] + "..."
+
+    return {
+        "title": clean_yt_text(title),
+        "channel": clean_yt_text(channel),
+        "views": clean_yt_text(views),
+        "published": clean_yt_text(published),
+        "description": clean_yt_text(description),
+        "related": related,
+    }
 
 
 # Aliases for cross-module compatibility
@@ -827,7 +968,23 @@ YT_VIDEO_CACHE_DIR = "/tmp/yt_cache"
 
 
 def resolve_ytdlp():
-    """Dynamically import yt_dlp module from app or sdcard bin."""
+    """Import yt_dlp, preferring the RAM-unzipped copy used by the player.
+
+    rh.yt_player already unzips bin/yt-dlp into /tmp/ytdlp_cache (tmpfs) so the
+    module imports without touching the zip; reusing that avoids importing from
+    a 3 MB zip on every call.
+    """
+    try:
+        from .yt_player import ensure_ytdlp_ready
+        ensure_ytdlp_ready()
+    except Exception:
+        pass
+    try:
+        import yt_dlp
+        return yt_dlp
+    except ImportError:
+        pass
+
     sdcard = os.environ.get("SDCARD_PATH", "/mnt/SDCARD")
     app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     candidates = [
@@ -867,6 +1024,284 @@ def extract_stream_url(video_id: str) -> tuple:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(yt_url, download=False)
         return info.get("url"), info.get("title", video_id)
+
+
+def resolve_audio_stream(video_id: str) -> tuple:
+    """Resolve an audio-only stream (m4a/webm) for audio-only playback."""
+    yt_dlp = resolve_ytdlp()
+    if not yt_dlp:
+        return None, None
+
+    yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    base_opts = {
+        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+    }
+    # The default client exposes audio-only formats; the mobile clients are a
+    # fallback for videos where the default client is challenged.
+    for ext_args in (None, {"youtube": {"player_client": ["android", "ios"]}}):
+        opts = dict(base_opts)
+        if ext_args:
+            opts["extractor_args"] = ext_args
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(yt_url, download=False)
+            url = info.get("url")
+            if not url and info.get("requested_formats"):
+                url = info["requested_formats"][0].get("url")
+            if url:
+                return url, info.get("title", video_id)
+        except Exception as e:
+            print(f"[rh.yt] Audio stream error for {video_id}: {e}")
+    return None, None
+
+
+QUALITY_HEIGHTS = {"360": 360, "480": 480, "720": 720}
+
+def ytdlp_zip_path() -> str:
+    """Path of the bundled yt-dlp package (a zip the app imports directly)."""
+    sdcard = os.environ.get("SDCARD_PATH", "/mnt/SDCARD")
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for c in (os.path.join(app_dir, "bin", "yt-dlp"),
+              os.path.join(sdcard, "Apps", "RetroHub", "bin", "yt-dlp"),
+              os.path.join(sdcard, ".retrohub", "bin", "yt-dlp")):
+        if os.path.exists(c):
+            return c
+    return ""
+
+
+def resolve_info_json(video_id: str, quality: str = "360", path: str = None) -> str:
+    """Dump yt-dlp's metadata for a video so a section can be fetched later.
+
+    yt-dlp needs the format/fragment metadata to download a *time range*; loading
+    this dump (`--load-info-json`) skips a second extraction on every seek, which
+    is what makes section-based seeking quick. Returns the file path or "".
+    """
+    yt_dlp = resolve_ytdlp()
+    if not yt_dlp or not video_id:
+        return ""
+    # Kept on the card (not tmpfs) so resuming the same video later does not have
+    # to run the extractor again. The URLs inside expire, so re-dump after an
+    # hour; the fragment metadata itself does not change.
+    path = path or os.path.join(SDCARD_PATH, ".retrohub", "cache",
+                                "yt_info_%s.json" % video_id)
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 1024:
+            if time.time() - os.path.getmtime(path) < 3600:
+                return path
+    except Exception:
+        pass
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except Exception:
+        pass
+    h = QUALITY_HEIGHTS.get(str(quality), 360)
+    yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+        "skip_download": True,
+        "check_formats": False,
+        "format": (f"bestvideo[height<={h}][vcodec^=avc1]+"
+                   f"bestaudio[acodec^=mp4a]/bestvideo[height<={h}]+bestaudio/"
+                   f"best[height<={h}]/18/best"),
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(yt_url, download=False)
+            data = ydl.sanitize_info(info)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        print(f"[rh.yt] info dump: {path} ({os.path.getsize(path)} bytes)")
+        return path
+    except Exception as e:
+        print(f"[rh.yt] info dump error for {video_id}: {e}")
+        return ""
+
+
+# Stream-URL cache for the in-app player. A googlevideo URL stays valid for
+# hours and resolving one costs seconds of yt-dlp work, so results are cached in
+# RAM (tmpfs) per video+quality. The RetroArch handoff path has its own cache in
+# rh.yt_player; this one covers resolve_streams().
+_STREAM_CACHE_FILE = "/tmp/yt_streams_inapp.json"
+_STREAM_CACHE_TTL = 3 * 3600
+_STREAM_CACHE = {}
+_STREAM_CACHE_LOADED = False
+
+
+def _load_stream_cache():
+    global _STREAM_CACHE, _STREAM_CACHE_LOADED
+    _STREAM_CACHE_LOADED = True
+    try:
+        if os.path.exists(_STREAM_CACHE_FILE):
+            with open(_STREAM_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                now = time.time()
+                _STREAM_CACHE = {k: v for k, v in data.items()
+                                 if isinstance(v, dict) and v.get("exp", 0) > now}
+    except Exception:
+        _STREAM_CACHE = {}
+
+
+def _save_stream_cache():
+    try:
+        now = time.time()
+        fresh = {k: v for k, v in _STREAM_CACHE.items() if v.get("exp", 0) > now}
+        with open(_STREAM_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(fresh, f)
+    except Exception:
+        pass
+
+
+def get_cached_streams(video_id: str, quality: str = "360"):
+    """Cached resolve_streams() result for the in-app player, or None."""
+    if not video_id:
+        return None
+    global _STREAM_CACHE
+    if not _STREAM_CACHE_LOADED:
+        _load_stream_cache()
+    key = "%s|%s" % (video_id, quality)
+    entry = _STREAM_CACHE.get(key)
+    if entry and entry.get("exp", 0) > time.time() and entry.get("video_url"):
+        res = dict(entry)
+        res.pop("exp", None)
+        return res
+    return None
+
+
+def cache_streams(video_id: str, quality: str, res: dict):
+    """Store a resolve_streams() result so the next playback skips yt-dlp."""
+    if not video_id or not res or not res.get("video_url"):
+        return
+    entry = dict(res)
+    entry["exp"] = time.time() + _STREAM_CACHE_TTL
+    _STREAM_CACHE["%s|%s" % (video_id, quality)] = entry
+    _save_stream_cache()
+
+
+def clear_cached_streams(video_id: str, quality: str = None):
+    """Drop cached resolution(s) for a video (an expired URL must be re-resolved)."""
+    if not video_id:
+        return
+    if quality is None:
+        keys = [k for k in _STREAM_CACHE if k.startswith(video_id + "|")]
+    else:
+        keys = ["%s|%s" % (video_id, quality)]
+    for k in keys:
+        _STREAM_CACHE.pop(k, None)
+    if keys:
+        _save_stream_cache()
+
+
+def resolve_streams(video_id: str, quality: str = "360") -> dict:
+    """Resolve video + audio stream URLs for the in-app player.
+
+    Returns {video_url, audio_url, title, height, progressive} or None. A
+    progressive format carries both tracks (same URL for both); a DASH format
+    returns separate video/audio URLs, which the two-process player handles.
+    """
+    cached = get_cached_streams(video_id, quality)
+    if cached:
+        print(f"[rh.yt] stream cache hit for {video_id} ({quality}p)")
+        return cached
+
+    yt_dlp = resolve_ytdlp()
+    if not yt_dlp:
+        return None
+
+    h = QUALITY_HEIGHTS.get(str(quality), 360)
+    yt_url = f"https://www.youtube.com/watch?v={video_id}"
+    # Prefer H.264 + AAC: the device ffmpeg/player may lack AV1/VP9/Opus.
+    # Progressive format 18 carries both tracks in one request, so it is the
+    # fastest and most compatible target at 360p; higher qualities need the
+    # separate DASH video/audio pair.
+    if h <= 360:
+        format_list = [
+            "18",
+            f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]",
+            f"best[height<={h}][ext=mp4]",
+        ]
+    else:
+        format_list = [
+            f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]",
+            f"bestvideo[height<={h}][ext=mp4]+bestaudio[ext=m4a]",
+            f"best[height<={h}][ext=mp4]",
+            "18/best[ext=mp4]/best",
+        ]
+    base_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+        "skip_download": True,
+        "check_formats": False,
+    }
+
+    # The default client is the only one that exposes separate DASH video/audio
+    # formats (needed for 480p/720p); forcing android/ios makes the DASH
+    # selector fail. Try default first, then the mobile clients as a fallback.
+    client_configs = (None, {"youtube": {"player_client": ["android", "ios"]}})
+
+    info = None
+    for ext_args in client_configs:
+        for fmt in format_list:
+            opts = dict(base_opts)
+            opts["format"] = fmt
+            if ext_args:
+                opts["extractor_args"] = ext_args
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    candidate = ydl.extract_info(yt_url, download=False)
+                if candidate and (candidate.get("url") or candidate.get("requested_formats")):
+                    info = candidate
+                    break
+            except Exception as e:
+                msg = str(e)
+                print(f"[rh.yt] resolve_streams fmt '{fmt}' failed: {msg}")
+                # No other format/parser can help with a dead or private video.
+                if any(t in msg for t in ("Video unavailable", "Private video",
+                                          "members-only", "has been removed",
+                                          "This video is not available")):
+                    return None
+        if info:
+            break
+
+    if not info:
+        return None
+
+    video_url = audio_url = None
+    progressive = True
+    requested = info.get("requested_formats")
+    if requested:
+        progressive = False
+        for f in requested:
+            if f.get("vcodec") not in (None, "none") and not video_url:
+                video_url = f.get("url")
+            elif f.get("acodec") not in (None, "none") and not audio_url:
+                audio_url = f.get("url")
+    if not video_url:
+        video_url = info.get("url")
+        audio_url = info.get("url")
+    if not audio_url:
+        audio_url = video_url
+    if not video_url:
+        return None
+
+    res = {
+        "video_url": video_url,
+        "audio_url": audio_url,
+        "title": info.get("title", video_id),
+        "height": info.get("height") or h,
+        "progressive": progressive,
+    }
+    cache_streams(video_id, quality, res)
+    return res
 
 
 def get_cached_video_path(video_id: str) -> str:

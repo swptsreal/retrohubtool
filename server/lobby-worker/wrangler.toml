@@ -10,7 +10,8 @@ compatibility_date = "2024-09-01"
 binding = "LOBBY_KV"
 id = "YOUR_KV_NAMESPACE_ID_HERE"
 
-# Biến môi trường tuỳ chọn (nếu muốn tự động post lên Telegram Channel)
+# Biến môi trường (đặt trong [vars], hoặc dùng `wrangler secret put` cho token)
 # [vars]
-# TELEGRAM_BOT_TOKEN = "your_bot_token"
+# ROOM_TTL_SECONDS = "1800"
 # TELEGRAM_CHANNEL_ID = "@retrohub_netplay"
+# (secret) TELEGRAM_BOT_TOKEN = "..."

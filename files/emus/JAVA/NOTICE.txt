@@ -63,7 +63,7 @@ at the address below is upstream hex007/freej2me and does NOT contain the
 modifications listed above, so it is not the corresponding source for this
 binary:
 
-  https://github.com/nguyenxuanhoa493/repohubtool/releases/tag/j2me-sources
+  https://github.com/swptsreal/retrohubtool/releases/tag/j2me-sources
 
 Neu ban can ma nguon tuong ung cua ban nhi phan nay, xin lien he
 nguyenxuanhoa493@gmail.com - toi se cung cap, hoac go thanh phan nay khoi ban

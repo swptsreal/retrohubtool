@@ -39,11 +39,19 @@ export LD_LIBRARY_PATH="$APP/libs:$SDCARD_PATH/System/lib:/usr/trimui/lib:/usr/l
 # khong chay duoc tren BusyBox vi thieu ldconfig/gcc/objdump.
 export PYSDL2_DLL_PATH="$APP/libs:/usr/trimui/lib:/usr/lib64:/usr/lib"
 
+# Release repo + OTA endpoints, overridable from the environment so a fork
+# deploys without editing this script. Python reads the same RETROHUB_* vars.
+RETROHUB_GITHUB_OWNER="${RETROHUB_GITHUB_OWNER:-swptsreal}"
+RETROHUB_GITHUB_REPO="${RETROHUB_GITHUB_REPO:-retrohubtool}"
+RETROHUB_GITHUB_BRANCH="${RETROHUB_GITHUB_BRANCH:-develop}"
+RETROHUB_RAW_BASE="${RETROHUB_RAW_BASE:-https://raw.githubusercontent.com/$RETROHUB_GITHUB_OWNER/$RETROHUB_GITHUB_REPO/$RETROHUB_GITHUB_BRANCH}"
+export RETROHUB_GITHUB_OWNER RETROHUB_GITHUB_REPO RETROHUB_GITHUB_BRANCH RETROHUB_RAW_BASE
+
 # Kept outside the app folder so reinstalling or updating RetroHub does not
 # throw away a runtime that took a download to get.
 CACHE_DIR="$SDCARD_PATH/.retrohub"
 CACHE_PY="$CACHE_DIR/python/bin/python3"
-RUNTIME_URL="https://github.com/nguyenxuanhoa493/repohubtool/releases/download/runtime-python-3.11.16-aarch64/python-3.11.16-aarch64.tar.gz"
+RUNTIME_URL="${RETROHUB_RUNTIME_URL:-https://github.com/$RETROHUB_GITHUB_OWNER/$RETROHUB_GITHUB_REPO/releases/download/runtime-python-3.11.16-aarch64/python-3.11.16-aarch64.tar.gz}"
 RUNTIME_SHA="67f320dc29bf98d93c81263de37875cfef47debfdcce6b97e1c3f3ee97bbd01b"
 RUNTIME_MB=20
 
@@ -213,13 +221,13 @@ while true; do
         # Tu dong cuu ho neu app bi vang / loi khoi dong (Self-Healing)
         export RETROHUB_RECOVERED=1
         log "Phat hien app bi loi (exit code $APP_EXIT_CODE). Dang thu tu dong cuu ho..."
-        HOTFIX_URL="https://raw.githubusercontent.com/nguyenxuanhoa493/repohubtool/main/files/rh/modals/__init__.py"
+        HOTFIX_URL="${RETROHUB_HOTFIX_URL:-$RETROHUB_RAW_BASE/files/rh/modals/__init__.py}"
         HOTFIX_DST="$APP/rh/modals/__init__.py"
         HOTFIX_OK=1
         if command -v curl >/dev/null 2>&1; then
-            curl -fsSLk "$HOTFIX_URL" -o "$HOTFIX_DST.tmp" 2>/dev/null && HOTFIX_OK=0
+            curl -fsSLk --max-time 20 "$HOTFIX_URL" -o "$HOTFIX_DST.tmp" 2>/dev/null && HOTFIX_OK=0
         elif command -v wget >/dev/null 2>&1; then
-            wget --no-check-certificate -q -O "$HOTFIX_DST.tmp" "$HOTFIX_URL" 2>/dev/null && HOTFIX_OK=0
+            wget --no-check-certificate -q -T 20 -O "$HOTFIX_DST.tmp" "$HOTFIX_URL" 2>/dev/null && HOTFIX_OK=0
         fi
         if [ $HOTFIX_OK -eq 0 ] && [ -s "$HOTFIX_DST.tmp" ]; then
             mv -f "$HOTFIX_DST.tmp" "$HOTFIX_DST"

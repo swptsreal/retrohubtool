@@ -20,6 +20,8 @@ import threading
 import urllib.request
 import urllib.parse
 import urllib.error
+
+from .config import CDN_BASE_URL, GHPROXY_BASE_URL, GITHUB_RAW_BASE_URL
 import ssl
 import concurrent.futures
 
@@ -222,9 +224,9 @@ def get_cheats_index():
                 pass
 
     index_urls = [
-        "https://cdn.jsdelivr.net/gh/nguyenxuanhoa493/repohubtool@main/files/rh/cheats_index.json.gz",
-        "https://ghproxy.net/https://raw.githubusercontent.com/nguyenxuanhoa493/repohubtool/main/files/rh/cheats_index.json.gz",
-        "https://raw.githubusercontent.com/nguyenxuanhoa493/repohubtool/main/files/rh/cheats_index.json.gz",
+        "%s/files/rh/cheats_index.json.gz" % CDN_BASE_URL,
+        "%s/files/rh/cheats_index.json.gz" % GHPROXY_BASE_URL,
+        "%s/files/rh/cheats_index.json.gz" % GITHUB_RAW_BASE_URL,
     ]
     for index_url in index_urls:
         try:

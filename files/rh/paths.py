@@ -56,6 +56,11 @@ def get_roms_root():
 
 
 TEMP_DOWNLOAD_DIR = os.path.join(get_roms_root(), ".tmp_download")
+# Standard library folders. gameweb.py (and others) import these names, so they
+# must exist here or the whole `from rh.paths import ...` block fails.
+ROMS_DIR = get_roms_root()
+IMGS_DIR = os.path.join(SDCARD_PATH, "Imgs")
+EMUS_DIR = os.path.join(SDCARD_PATH, "Emus")
 STREAMER_SCRIPT = os.path.join(APP_DIR, "streamer.py")
 GAMEWEB_SCRIPT = os.path.join(APP_DIR, "gameweb.py")
 ASSETS_DIR = os.path.join(APP_DIR, "assets")
@@ -94,6 +99,9 @@ YT_FEED_FALLBACK_FILE = "/tmp/yt_feed_cache.json"
 YT_HISTORY_FILE = os.path.join(APP_DIR, "yt_history.json")
 YT_FAVORITES_FILE = os.path.join(SDCARD_PATH, ".retrohub", "yt_favorites.json")
 YT_FAVORITES_FALLBACK_FILE = os.path.join(APP_DIR, "yt_favorites.json")
+YT_SESSION_FILE = os.path.join(SDCARD_PATH, ".retrohub", "yt_session.json")
+YT_PROGRESS_FILE = os.path.join(SDCARD_PATH, ".retrohub", "yt_progress.json")
+YT_WATCHED_FILE = os.path.join(SDCARD_PATH, ".retrohub", "yt_watched.json")
 
 
 def is_nextui():
