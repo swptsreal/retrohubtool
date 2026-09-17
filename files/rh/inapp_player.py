@@ -274,9 +274,11 @@ class InAppPlayer:
         if not self.audio_only:
             # ARGB8888 is the GLES2-friendly 32-bit format; on little-endian its
             # byte order is B,G,R,A, which matches ffmpeg's "bgra" output.
+            # IYUV (Y,U,V) matches ffmpeg's yuv420p and is natively handled by
+            # the GLES2 renderer, avoiding BGRA swizzle/format problems.
             self.texture = sdl2.SDL_CreateTexture(
                 self.renderer,
-                sdl_pixels.SDL_PIXELFORMAT_ARGB8888,
+                sdl_pixels.SDL_PIXELFORMAT_IYUV,
                 sdl_render.SDL_TEXTUREACCESS_STREAMING,
                 self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
@@ -418,7 +420,7 @@ class InAppPlayer:
         if abs(self.speed - 1.0) > 0.01:
             vf = "setpts=PTS/%.3f,%s" % (self.speed, vf)
         cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0",
-               "-an", "-vf", vf, "-pix_fmt", "bgra", "-f", "rawvideo", "pipe:1"]
+               "-an", "-vf", vf, "-pix_fmt", "yuv420p", "-f", "rawvideo", "pipe:1"]
         _log("video: ffmpeg -f mp4 -i pipe:0 itag=%s size=%dx%d" %
              (_url_itag(self._video_url), self._w, self._h))
         try:
@@ -489,7 +491,7 @@ class InAppPlayer:
 
     def _video_loop(self):
         proc = self.video_proc
-        frame_bytes = self._w * self._h * 4
+        frame_bytes = self._w * self._h * 3 // 2   # yuv420p
         idx = 0
         try:
             while not self._stop.is_set():
@@ -575,36 +577,30 @@ class InAppPlayer:
         if due is not None:
             ok = False
             try:
-                # Primary: SDL_UpdateTexture (takes the bytes directly).
-                rc2 = sdl2.SDL_UpdateTexture(self.texture, None,
-                                             ctypes.c_char_p(due), self._w * 4)
-                ok = (rc2 == 0)
-                rc = None
-                pitch = 0
-                if not ok:
-                    # Fallback: lock/unlock + memmove to the returned address.
-                    px = ctypes.c_void_p()
-                    pitch_c = ctypes.c_int(0)
-                    rc = sdl2.SDL_LockTexture(self.texture, None,
-                                              ctypes.byref(px), ctypes.byref(pitch_c))
-                    pitch = pitch_c.value
-                    if rc == 0 and px.value:
-                        ctypes.memmove(px.value, due, len(due))
-                        sdl2.SDL_UnlockTexture(self.texture)
-                        ok = True
+                w, h = self._w, self._h
+                ys = w * h
+                us = (w // 2) * (h // 2)
+                yp = due[:ys]
+                up = due[ys:ys + us]
+                vp = due[ys + us:ys + 2 * us]
+                rc = sdl2.SDL_UpdateYUVTexture(
+                    self.texture, None,
+                    ctypes.c_char_p(yp), w,
+                    ctypes.c_char_p(up), w // 2,
+                    ctypes.c_char_p(vp), w // 2)
+                ok = (rc == 0)
                 if not self._got_upload:
                     self._got_upload = True
                     nz = 0
-                    for i in range(0, min(16000, len(due)), 4):
-                        if due[i] or due[i + 1] or due[i + 2]:
+                    for i in range(0, min(4000, len(yp)), 4):
+                        if yp[i]:
                             nz += 1
-                    _log("video: first upload up_rc=%s lock_rc=%s ok=%s pitch=%s "
-                         "audio_pos=%.2f px0=%s mid=%s rgb_nz=%d err=%r" %
-                         (rc2, rc, ok, pitch, audio_pos,
-                          due[:4].hex(), due[len(due) // 2:len(due) // 2 + 4].hex(),
-                          nz, sdl2.SDL_GetError().decode()))
+                    _log("video: first YUV upload rc=%s ok=%s audio_pos=%.2f "
+                         "y0=%s y_nz=%d err=%r" %
+                         (rc, ok, audio_pos, yp[:4].hex(), nz,
+                          sdl2.SDL_GetError().decode()))
             except Exception as e:
-                _log("video: upload error: %s" % e)
+                _log("video: YUV upload error: %s" % e)
             if ok:
                 self._video_up += 1
                 if self._video_up % 300 == 0:
