@@ -276,11 +276,12 @@ class InAppPlayer:
         if not self.audio_only:
             # ARGB8888 is the GLES2-friendly 32-bit format; on little-endian its
             # byte order is B,G,R,A, which matches ffmpeg's "bgra" output.
-            # IYUV (Y,U,V) matches ffmpeg's yuv420p and is natively handled by
-            # the GLES2 renderer, avoiding BGRA swizzle/format problems.
+            # RGBA8888 is GL_RGBA on GLES2 (no swizzle needed); ffmpeg outputs
+            # matching "rgba" bytes. ARGB8888/BGRA needed a swizzle shader that
+            # this Mali driver rendered wrong (black/green).
             self.texture = sdl2.SDL_CreateTexture(
                 self.renderer,
-                sdl_pixels.SDL_PIXELFORMAT_IYUV,
+                sdl_pixels.SDL_PIXELFORMAT_RGBA8888,
                 sdl_render.SDL_TEXTUREACCESS_STREAMING,
                 self._w, self._h)
             self.tex_w, self.tex_h = self._w, self._h
@@ -423,7 +424,7 @@ class InAppPlayer:
         if abs(self.speed - 1.0) > 0.01:
             vf = "setpts=PTS/%.3f,%s" % (self.speed, vf)
         cmd = [ff, "-hide_banner", "-loglevel", "error", "-f", "mp4", "-i", "pipe:0",
-               "-an", "-vf", vf, "-pix_fmt", "yuv420p", "-f", "rawvideo", "pipe:1"]
+               "-an", "-vf", vf, "-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"]
         _log("video: ffmpeg -f mp4 -i pipe:0 itag=%s size=%dx%d" %
              (_url_itag(self._video_url), self._w, self._h))
         try:
@@ -494,7 +495,7 @@ class InAppPlayer:
 
     def _video_loop(self):
         proc = self.video_proc
-        frame_bytes = self._w * self._h * 3 // 2   # yuv420p
+        frame_bytes = self._w * self._h * 4   # rgba
         idx = 0
         try:
             while not self._stop.is_set():
@@ -580,33 +581,24 @@ class InAppPlayer:
         if due is not None:
             ok = False
             try:
-                w, h = self._w, self._h
-                ys = w * h
-                us = (w // 2) * (h // 2)
-                yp = due[:ys]
-                up = due[ys:ys + us]
-                vp = due[ys + us:ys + 2 * us]
-                # PySDL2 wants POINTER(c_ubyte) for the planes, not c_char_p.
-                Y = ctypes.cast(ctypes.c_char_p(yp), ctypes.POINTER(ctypes.c_ubyte))
-                U = ctypes.cast(ctypes.c_char_p(up), ctypes.POINTER(ctypes.c_ubyte))
-                V = ctypes.cast(ctypes.c_char_p(vp), ctypes.POINTER(ctypes.c_ubyte))
-                rc = sdl2.SDL_UpdateYUVTexture(
-                    self.texture, None, Y, w, U, w // 2, V, w // 2)
+                rc = sdl2.SDL_UpdateTexture(self.texture, None,
+                                            ctypes.c_char_p(due), self._w * 4)
                 ok = (rc == 0)
                 if not self._got_upload:
                     self._got_upload = True
                     nz = 0
-                    for i in range(0, min(4000, len(yp)), 4):
-                        if yp[i]:
+                    for i in range(0, min(16000, len(due)), 4):
+                        if due[i] or due[i + 1] or due[i + 2]:
                             nz += 1
-                    _log("video: first YUV upload rc=%s ok=%s audio_pos=%.2f "
-                         "y0=%s y_nz=%d err=%r" %
-                         (rc, ok, audio_pos, yp[:4].hex(), nz,
+                    _log("video: first RGBA upload rc=%s ok=%s audio_pos=%.2f "
+                         "px0=%s mid=%s rgb_nz=%d err=%r" %
+                         (rc, ok, audio_pos, due[:4].hex(),
+                          due[len(due) // 2:len(due) // 2 + 4].hex(), nz,
                           sdl2.SDL_GetError().decode()))
             except Exception as e:
                 if not self._upload_err_logged:
                     self._upload_err_logged = True
-                    _log("video: YUV upload error: %s" % e)
+                    _log("video: RGBA upload error: %s" % e)
             if ok:
                 self._video_up += 1
                 if self._video_up % 300 == 0:
