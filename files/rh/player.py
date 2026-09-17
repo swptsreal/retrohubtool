@@ -83,12 +83,16 @@ def inapp_available() -> bool:
         from . import inapp_player
         if not inapp_player.available():
             return False
-        status = inapp_player.h264_status()
-        if status is None:
-            # Probe off the main thread; optimistically allow in-app for now.
+        h264 = inapp_player.h264_status()
+        http = inapp_player.http_protocol_status()
+        if h264 is None:
             inapp_player.precompute_decoder_check()
+        if http is None:
+            inapp_player.precompute_protocol_check()
+        if h264 is None or http is None:
+            # Probe off the main thread; optimistically allow in-app for now.
             return True
-        return bool(status)
+        return bool(h264 and http)
     except Exception:
         return False
 

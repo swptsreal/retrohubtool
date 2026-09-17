@@ -106,6 +106,43 @@ def precompute_decoder_check():
     threading.Thread(target=has_h264_decoder, daemon=True).start()
 
 
+_HTTP_CACHE = None
+
+
+def has_http_protocol():
+    """True when the device ffmpeg can open http(s) URLs.
+
+    The bundled ffmpeg is built for the screen streamer (rawvideo -> mjpeg) and
+    often has no network protocols, so feeding it a googlevideo URL fails with
+    "Protocol not found". Cached because `-protocols` is slow.
+    """
+    global _HTTP_CACHE
+    if _HTTP_CACHE is not None:
+        return _HTTP_CACHE
+    ff = find_ffmpeg()
+    if not ff:
+        _HTTP_CACHE = False
+        return False
+    try:
+        out = subprocess.run(
+            [ff, "-hide_banner", "-protocols"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=6
+        ).stdout.decode("utf-8", "ignore")
+        _HTTP_CACHE = ("https" in out) or ("http" in out)
+    except Exception:
+        _HTTP_CACHE = False
+    return _HTTP_CACHE
+
+
+def http_protocol_status():
+    """Cached result of has_http_protocol(): True/False, or None if not probed."""
+    return _HTTP_CACHE
+
+
+def precompute_protocol_check():
+    threading.Thread(target=has_http_protocol, daemon=True).start()
+
+
 def available():
     """Fast check (no subprocess): SDL audio + an ffmpeg binary are present."""
     return bool(sdl2 and sdl_audio and find_ffmpeg())
@@ -154,6 +191,10 @@ class InAppPlayer:
             return False
         if not has_h264_decoder():
             self.error = "ffmpeg has no H.264 decoder"
+            _log(self.error)
+            return False
+        if not has_http_protocol():
+            self.error = "ffmpeg has no http(s) protocol"
             _log(self.error)
             return False
         _log("start audio_only=%s quality=%s size=%dx%d start=%.1fs" %
