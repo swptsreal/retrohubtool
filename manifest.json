@@ -523,8 +523,8 @@
     },
     {
       "path": "rh/logger.py",
-      "size": 35782,
-      "sha256": "3c39e36a5a6379be187bf926fb34f7a09f4f3426e9f7b6e3020e8faf31198844"
+      "size": 37775,
+      "sha256": "7b6abf7e86a19aa45653f95e1719224c638301550ded2ca447cee3a65d0d0750"
     },
     {
       "path": "rh/media.py",
@@ -583,8 +583,8 @@
     },
     {
       "path": "rh/paths.py",
-      "size": 5398,
-      "sha256": "4eceaad141d361cafa038e8ee4f9b4a3206c9db4462c86615daafb5499b767e2"
+      "size": 5666,
+      "sha256": "89a09ae8448a869cfd4d6c93579db9aed8f43ca2bc38948bedf24a9133dd2797"
     },
     {
       "path": "rh/playback.py",
