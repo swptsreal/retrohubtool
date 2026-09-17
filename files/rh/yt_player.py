@@ -2,6 +2,7 @@
 """YouTube standalone player launcher for RetroHub on TrimUI devices."""
 
 import http.server
+import json
 import os
 import shutil
 import socket
@@ -446,7 +447,6 @@ input_joypad_driver = "sdl2"
 
 if __name__ == "__main__":
     import argparse
-    import json
 
     parser = argparse.ArgumentParser(description="RetroHub YouTube Player")
     parser.add_argument("video_id", help="YouTube Video ID or URL")

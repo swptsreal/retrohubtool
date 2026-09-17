@@ -25,10 +25,12 @@ class YoutubeScreen(BaseScreen):
         self.active_query_idx = 0
         self.loading = False
         self.launching = False
+        self.fav_ids = set()
 
     def build_tabs(self, select_tab: str = None):
         """Build tab list dynamically: puts '★ Yêu thích' first if favorites exist."""
         favs = yt.load_favorites()
+        self.fav_ids = {f.get("id") for f in favs if f.get("id")}
         tabs = []
         if favs:
             tabs.append("★ Yêu thích")
@@ -75,7 +77,7 @@ class YoutubeScreen(BaseScreen):
 
             # Background download thumbnails
             def _bg_thumbs():
-                for v in self.videos[:18]:
+                for v in self.videos:
                     v_id = v.get("id")
                     if v_id:
                         yt.fetch_thumbnail(v.get("thumb", ""), YT_CACHE_DIR, v_id)
@@ -154,6 +156,7 @@ class YoutubeScreen(BaseScreen):
                 v = self.videos[self.selected_idx]
                 favs = yt.load_favorites()
                 new_favs, is_added = yt.toggle_favorite(v, favs)
+                self.fav_ids = {f.get("id") for f in new_favs if f.get("id")}
                 action_str = "Đã lưu vào Yêu thích" if is_added else "Đã xóa khỏi Yêu thích"
                 clean_t = yt.clean_yt_text(v.get("title", "Video"))
                 self.engine.toast(f"{action_str}: {clean_t[:24]}")
@@ -350,7 +353,7 @@ class YoutubeScreen(BaseScreen):
                 engine.draw_text("YouTube", engine.font_badge, ix + img_w // 2, iy + img_h // 2, 230, 33, 23, center_x=True, center_y=True)
 
             # Star badge if video is in favorites
-            if yt.is_favorite(v_id):
+            if v_id in self.fav_ids:
                 engine.fill_rect(ix + img_w - 28, iy + 4, 24, 20, 20, 25, 40, 220)
                 engine.draw_text("★", engine.font_badge, ix + img_w - 16, iy + 14, 255, 215, 0, center_x=True, center_y=True)
 
@@ -363,7 +366,7 @@ class YoutubeScreen(BaseScreen):
 
             # Title (Cleaned & Left-aligned with comfortable 30px line spacing)
             raw_title = v.get("disp_title") or v.get("title", "")
-            clean_title = f"{real_idx + 1}. {yt.clean_yt_text(raw_title)}"
+            clean_title = f"{real_idx + 1}. {raw_title}"
             t_lines = engine.wrap_text_to_width(clean_title, engine.font_grid_title, card_w - 16, max_lines=2)
             ty = iy + img_h + 6
             for tl in t_lines:
