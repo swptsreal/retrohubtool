@@ -1,12 +1,12 @@
 {
-  "version": "3.4",
+  "version": "3.5",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T16:31:44+0700",
+  "built": "2026-09-17T16:40:19+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.4: In-app player dùng pipe (audio OK); thêm log chẩn đoán video (frames read/upload/drop, feed bytes, UpdateTexture error).",
-    "en": "v3.4: In-app player pipe mode (audio OK); add video diagnostics (frames read/upload/drop, feed bytes, UpdateTexture errors)."
+    "vi": "Bản 3.5: chẩn đoán video in-app (giữ stderr qua các lần seek, log itag/short read, thử -f mp4 cho pipe).",
+    "en": "v3.5: in-app video diagnostics (keep ffmpeg stderr across seeks, log itag/short read, try -f mp4 for pipe)."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 19625,
-      "sha256": "2f81218ec061bf85868b8a7bc06208b42ced075e414a71ed697da6d685aae0b3"
+      "size": 20516,
+      "sha256": "15a3abc38c2574b46d20dcaa6f492ba2d082d0c6b15e88b7d5b9410abe995614"
     },
     {
       "path": "rh/inputs.py",
@@ -733,8 +733,8 @@
     },
     {
       "path": "rh/version.py",
-      "size": 1529,
-      "sha256": "7f97758b5d58e453917d8597058ee2a4eae6a65911511e249ba3482e1626c443"
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "path": "rh/yt.py",
