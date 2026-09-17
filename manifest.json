@@ -1,12 +1,12 @@
 {
-  "version": "3.8",
+  "version": "3.9",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T17:08:03+0700",
+  "built": "2026-09-17T17:13:14+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.8: Chẩn đoán sâu video in-app (nội dung frame pixel, query texture, blend/alpha) để tìm nguyên nhân màn đen.",
-    "en": "v3.8: deeper in-app video diagnostics (frame pixel content, texture query, blend/alpha) to find the black-screen cause."
+    "vi": "Bản 3.9: chẩn đoán upload 2 đường (UpdateTexture + Lock/memmove), log lỗi SDL + tên renderer + nội dung frame để chốt nguyên nhân màn đen.",
+    "en": "v3.9: dual upload path diagnostics (UpdateTexture + Lock/memmove), SDL error + renderer name + frame content to pin the black-screen cause."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 23186,
-      "sha256": "9a9e156146c3f2cf12728d6b746fdd34a2c800227dcbd3b23a6544123b0360e4"
+      "size": 23953,
+      "sha256": "51ce8fd6b6f0f118775c5e76061a93ffb3b4aaf8d0924451b15ec74177cd7ec7"
     },
     {
       "path": "rh/inputs.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1529,
-      "sha256": "113a3da9261218e35ec2006075652e8e77f1cd739626567f910033d23876dddd"
+      "sha256": "1420c7aee63ab9fac39c10f327900d1e175a5240e5fce0bbf9bb0134f35a6e16"
     },
     {
       "path": "rh/yt.py",
