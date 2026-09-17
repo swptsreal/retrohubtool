@@ -1,12 +1,12 @@
 {
-  "version": "2.27",
+  "version": "3.0",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-16T20:06:07+0700",
-  "base_url": "https://raw.githubusercontent.com/nguyenxuanhoa493/repohubtool/main",
+  "built": "2026-09-17T14:17:19+0700",
+  "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bổ sung Thanh tiến trình trực quan & Phần trăm tải tệp thời gian thực trong Modal Cập nhật",
-    "en": "Visual Progress Bar & Real-time Percentage for OTA Update Downloads"
+    "vi": "Bản 3.0: Đại tu YouTube (trang chi tiết, hàng đợi, trình phát trong app, chỉ nghe nhạc), cấu hình theo biến môi trường, kênh OTA qua Cloudflare Worker.",
+    "en": "v3.0: YouTube overhaul (watch page, queue, in-app player, audio-only), env-based config, Cloudflare Worker OTA channel."
   },
   "remove": [
     "app.pyc",
@@ -268,8 +268,8 @@
     },
     {
       "path": "emus/JAVA/NOTICE.txt",
-      "size": 6657,
-      "sha256": "faf54b3361b33822fbcdd44f4de2073441feee1ffb5255cb0012d5a8acc23219"
+      "size": 6651,
+      "sha256": "f15b64900c045553a7d543c292b72a74226e2ee12f98bb551be6de1c66d661fc"
     },
     {
       "path": "emus/JAVA/config.json",
@@ -373,8 +373,8 @@
     },
     {
       "path": "launch.sh",
-      "size": 9751,
-      "sha256": "4f5331b3496234003bca0d43bfa72b773cca041c838750522ec03d1d40ccb6b2"
+      "size": 10338,
+      "sha256": "f98096d2caf13a47dd6c5441d87c63549604d090fbebb18755b148f53aff37ec"
     },
     {
       "path": "led_daemon.py",
@@ -418,13 +418,18 @@
     },
     {
       "path": "rh/cheat_manager.py",
-      "size": 25797,
-      "sha256": "cc96371ed2cf749ebce6ed1c378909ac76b26d71d7c4259ad0626a7067291353"
+      "size": 25717,
+      "sha256": "e97466b0a57db25054dc9a6278715ee0b4db9c2750e8dbb27e674f113bfb77eb"
     },
     {
       "path": "rh/cheats_index.json.gz",
       "size": 268664,
       "sha256": "bc49edf69ff9847bf167bf6e00960eb91b3317b7d396b3b70ac4999fd4b30dc7"
+    },
+    {
+      "path": "rh/config.py",
+      "size": 1693,
+      "sha256": "d16d3ba8ad42bfc17c89ba0336fb856ba35fe00f7262803c5e94fa51560a70e8"
     },
     {
       "path": "rh/corepicker.py",
@@ -508,8 +513,8 @@
     },
     {
       "path": "rh/logger.py",
-      "size": 35827,
-      "sha256": "e83f47d6568d35f2d976a2b7b88f6ec1b67ef20af30dbd5dc07f5a478903298f"
+      "size": 35782,
+      "sha256": "3c39e36a5a6379be187bf926fb34f7a09f4f3426e9f7b6e3020e8faf31198844"
     },
     {
       "path": "rh/media.py",
@@ -563,8 +568,8 @@
     },
     {
       "path": "rh/netplay.py",
-      "size": 13475,
-      "sha256": "8026dcc259e3dbe109d6365cfe069e8f5a0708549cd38ad99ad9fcf35efeb896"
+      "size": 13430,
+      "sha256": "cc40580f54f198566ff4445bcba45d6b1bba85c03037546fdffa5addea476634"
     },
     {
       "path": "rh/paths.py",
@@ -643,8 +648,8 @@
     },
     {
       "path": "rh/services.py",
-      "size": 24908,
-      "sha256": "714b0ee27127e7f9fa787d6fe0d6391fa4a9a5c28a528a97f1006c5254b0a55b"
+      "size": 24846,
+      "sha256": "46705d8ec216e54c2560b2da902f5079c43467fd0b09d645595e7044b7d379a4"
     },
     {
       "path": "rh/splash.py",
@@ -688,13 +693,13 @@
     },
     {
       "path": "rh/updater.py",
-      "size": 27632,
-      "sha256": "87397f376b66f50c8f182319e6503329225f150ee85b1eea87a8fb3c3f3c1c9f"
+      "size": 27873,
+      "sha256": "ef6e57ee10fafeba45a8a6de41eed1dd159c4dd38da1cd9d2f40df605c2d8461"
     },
     {
       "path": "rh/version.py",
-      "size": 855,
-      "sha256": "ea36f146b4e3eb4e1bc24fb0d93911323f14d11fc3a1094d2d905013830a65f7"
+      "size": 854,
+      "sha256": "cea652fe422d90742d09102e9a867f9d8c22e393269ee21877a8842c52b5a0a6"
     },
     {
       "path": "rh/yt.py",

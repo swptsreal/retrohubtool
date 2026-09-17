@@ -17,6 +17,7 @@ const CORS_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
 };
 
+// Default room lifetime; override with the ROOM_TTL_SECONDS env var.
 const ROOM_TTL_SECONDS = 1800; // 30 minutes
 
 function jsonResponse(data, status = 200) {
@@ -38,6 +39,7 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "");
+    const roomTtl = parseInt(env.ROOM_TTL_SECONDS, 10) || ROOM_TTL_SECONDS;
 
     // 1. Health check & API root
     if (path === "" || path === "/api") {
@@ -135,7 +137,7 @@ export default {
 
         // Put to KV with 30 minutes TTL and store in metadata for 0-subrequest instant listing
         await env.LOBBY_KV.put(roomId, JSON.stringify(roomData), {
-          expirationTtl: ROOM_TTL_SECONDS,
+          expirationTtl: roomTtl,
           metadata: roomData,
         });
 
@@ -178,7 +180,7 @@ export default {
           data.last_seen = Math.floor(Date.now() / 1000);
 
           await env.LOBBY_KV.put(roomId, JSON.stringify(data), {
-            expirationTtl: ROOM_TTL_SECONDS,
+            expirationTtl: roomTtl,
             metadata: data,
           });
 

@@ -10,6 +10,8 @@ import json
 import threading
 import re
 
+from .config import (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+                     TELEGRAM_GROUP_CHAT_ID, TELEGRAM_DEBUG_THREAD_ID)
 from .paths import EX_OPTIONS_FILE, STREAMER_SCRIPT, GAMEWEB_SCRIPT
 from . import state
 from .sysinfo import (get_ip, is_sftpgo_running, is_ssh_running,
@@ -530,11 +532,6 @@ def send_ssh_info_to_telegram():
     ])
 
     text = "\n".join(msg_lines)
-
-    TELEGRAM_BOT_TOKEN = "8843439406:AAEtTnuMk68ilAniAxj8Kl3uTKZmVKEVDDs"
-    TELEGRAM_CHAT_ID = "663642384"
-    TELEGRAM_GROUP_CHAT_ID = "-1003890413445"
-    TELEGRAM_DEBUG_THREAD_ID = 1205
 
     dest_chats = [
         (TELEGRAM_GROUP_CHAT_ID, TELEGRAM_DEBUG_THREAD_ID)

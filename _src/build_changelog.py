@@ -18,7 +18,7 @@ import json
 import os
 import re
 
-from build import CSS, DOMAIN, navlinks_for
+from build import CSS, DOMAIN, navlinks_for, apply_env_literals
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -812,7 +812,7 @@ T = {
   "back": "Back to homepage",
   "latest": "Latest",
   "foot": ('Looking for source commits? The repository and full release history '
-           'live on <a href="https://github.com/nguyenxuanhoa493/repohubtool/releases">GitHub</a>.'),
+           'live on <a href="https://github.com/swptsreal/retrohubtool/releases">GitHub</a>.'),
  },
  "vi": {
   "lang": "vi", "other": "en", "other_name": "English",
@@ -828,7 +828,7 @@ T = {
   "latest": "Mới nhất",
   "foot": ('Cần xem lịch sử mã nguồn? Toàn bộ commit và tệp phân phối '
            'của từng phiên bản nằm trên '
-           '<a href="https://github.com/nguyenxuanhoa493/repohubtool/releases">GitHub</a>.'),
+           '<a href="https://github.com/swptsreal/retrohubtool/releases">GitHub</a>.'),
  },
 }
 
@@ -954,6 +954,8 @@ def render(lang):
             out = out.replace("{%s}" % k, v)
 
     left = re.findall(r"\{([a-zA-Z_]+)\}", out)
+    out = apply_env_literals(out)
+
     if left:
         raise SystemExit("con cho trong chua thay: %s" % sorted(set(left)))
     return out

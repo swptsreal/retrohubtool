@@ -3,3 +3,4 @@ __pycache__/
 catalog/roms_store.sqlite3
 docs/
 logs/
+.wrangler/

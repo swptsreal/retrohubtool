@@ -17,7 +17,52 @@ import os
 import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOMAIN = "https://retrohub.xuanhoa493.com"
+
+# Site identity, overridable from the environment so a fork can rebuild the
+# pages for its own domain/contact without editing code.
+DOMAIN = os.environ.get("RETROHUB_DOMAIN", "https://retrohub.xuanhoa493.com")
+GITHUB_OWNER = os.environ.get("RETROHUB_GITHUB_OWNER", "swptsreal")
+GITHUB_REPO = os.environ.get("RETROHUB_GITHUB_REPO", "retrohubtool")
+REPO_SLUG = "%s/%s" % (GITHUB_OWNER, GITHUB_REPO)
+AUTHOR_NAME = os.environ.get("RETROHUB_AUTHOR_NAME", "Nguyễn Xuân Hòa")
+AUTHOR_URL = os.environ.get("RETROHUB_AUTHOR_URL", "https://xuanhoa493.com")
+CONTACT_EMAIL = os.environ.get("RETROHUB_CONTACT_EMAIL", "nguyenxuanhoa493@gmail.com")
+CONTACT_TELEGRAM = os.environ.get("RETROHUB_CONTACT_TELEGRAM", "xuanhoa493")
+CONTACT_TELEGRAM_GROUP = os.environ.get("RETROHUB_CONTACT_TELEGRAM_GROUP", "retrohubtool")
+CONTACT_PHONE = os.environ.get("RETROHUB_CONTACT_PHONE", "+84962369231")
+CONTACT_PHONE_DISPLAY = os.environ.get("RETROHUB_CONTACT_PHONE_DISPLAY", "0962 369 231")
+BANK_NAME = os.environ.get("RETROHUB_BANK_NAME", "Techcombank")
+BANK_HOLDER = os.environ.get("RETROHUB_BANK_HOLDER", "NGUYEN XUAN HOA")
+BANK_ACCOUNT = os.environ.get("RETROHUB_BANK_ACCOUNT", "1732 8888 88")
+BMC_URL = os.environ.get("RETROHUB_BMC_URL", "https://buymeacoffee.com/xuanhoa493")
+
+# Literal -> env-backed value, applied to the rendered HTML of every page so
+# contact/donation/repo strings live in one place. Longer strings first.
+_ENV_LITERALS = (
+    ("https://api.github.com/repos/swptsreal/retrohubtool/releases",
+     "https://api.github.com/repos/%s/releases" % REPO_SLUG),
+    ("https://github.com/swptsreal/retrohubtool/releases/latest",
+     "https://github.com/%s/releases/latest" % REPO_SLUG),
+    ("https://github.com/swptsreal/retrohubtool/releases",
+     "https://github.com/%s/releases" % REPO_SLUG),
+    ("nguyenxuanhoa493@gmail.com", CONTACT_EMAIL),
+    ("https://t.me/retrohubtool", "https://t.me/" + CONTACT_TELEGRAM_GROUP),
+    ("https://t.me/xuanhoa493", "https://t.me/" + CONTACT_TELEGRAM),
+    ("tel:+84962369231", "tel:" + CONTACT_PHONE),
+    ("0962 369 231", CONTACT_PHONE_DISPLAY),
+    ("https://buymeacoffee.com/xuanhoa493", BMC_URL),
+    ("https://xuanhoa493.com", AUTHOR_URL),
+    ("Nguyễn Xuân Hòa", AUTHOR_NAME),
+    ("Techcombank", BANK_NAME),
+    ("NGUYEN XUAN HOA", BANK_HOLDER),
+    ("1732 8888 88", BANK_ACCOUNT),
+)
+
+
+def apply_env_literals(html):
+    for literal, value in _ENV_LITERALS:
+        html = html.replace(literal, value)
+    return html
 
 
 def _published_version(fallback="1.50"):
@@ -50,8 +95,7 @@ VER_FULL = "RetroHub-%s-full.zip" % FULL_VERSION
 VER_NEXTUI = "RetroHub-%s-NextUI.zip" % FULL_VERSION
 VER_HOTFIX = "RetroHub-HOTFIX.zip"
 VER_SD_FULL = "trimui_brick_pro_tg4040_sd_base_20260824_retrohub_v1.97.zip"
-REL = ("https://github.com/nguyenxuanhoa493/repohubtool/releases/download/v%s"
-       % FULL_VERSION)
+REL = ("https://github.com/%s/releases/download/v%s" % (REPO_SLUG, FULL_VERSION))
 SD_FULL_URL = f"{REL}/{VER_SD_FULL}"
 HOTFIX_URL = f"{REL}/{VER_HOTFIX}"
 
@@ -515,7 +559,7 @@ JS = """
     var cached = null;
     try { cached = sessionStorage.getItem("rh_dl"); } catch (e) {}
     if (cached) { put(parseInt(cached, 10)); return; }
-    fetch("https://api.github.com/repos/nguyenxuanhoa493/repohubtool/releases")
+    fetch("https://api.github.com/repos/swptsreal/retrohubtool/releases")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (rs) {
         if (!rs) return;
@@ -729,7 +773,7 @@ def render(lang):
         "@context": "https://schema.org", "@type": "SoftwareApplication",
         "name": "RetroHub", "applicationCategory": "GameApplication",
         "operatingSystem": "TrimUI & NextUI (Linux)", "url": canon,
-        "downloadUrl": "https://github.com/nguyenxuanhoa493/repohubtool/releases/latest",
+        "downloadUrl": "https://github.com/swptsreal/retrohubtool/releases/latest",
         "softwareVersion": VERSION, "inLanguage": lang, "description": t["desc"],
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "VND"},
         "author": {"@type": "Person", "name": "Nguyễn Xuân Hòa",
@@ -771,6 +815,8 @@ def render(lang):
     for k, v in t.items():
         if isinstance(v, str):
             out = out.replace("{%s}" % k, v)
+
+    out = apply_env_literals(out)
 
     left = re.findall(r"\{([a-zA-Z_]+)\}", out)
     if left:

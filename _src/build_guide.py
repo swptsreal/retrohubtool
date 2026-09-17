@@ -15,7 +15,7 @@ import re
 
 from build import (
     ROOT, CSS, DOMAIN, navlinks_for, VERSION, FULL_VERSION,
-    VER_FULL, VER_NEXTUI, VER_SD_FULL, SD_FULL_URL, REL
+    VER_FULL, VER_NEXTUI, VER_SD_FULL, SD_FULL_URL, REL, apply_env_literals
 )
 
 SECTIONS = [
@@ -565,6 +565,8 @@ def render(lang):
         out = out.replace(f"{{{k}}}", str(v))
 
     left = re.findall(r"\{([a-zA-Z_]+)\}", out)
+    out = apply_env_literals(out)
+
     if left:
         raise SystemExit(f"Missing placeholder replacement: {sorted(set(left))}")
 
