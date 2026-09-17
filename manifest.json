@@ -143,8 +143,8 @@
       {
         "path": "NOTICE.txt",
         "url": "files/emus/JAVA/NOTICE.txt",
-        "size": 6657,
-        "sha256": "faf54b3361b33822fbcdd44f4de2073441feee1ffb5255cb0012d5a8acc23219"
+        "size": 6651,
+        "sha256": "f15b64900c045553a7d543c292b72a74226e2ee12f98bb551be6de1c66d661fc"
       },
       {
         "path": "config.json",
@@ -203,8 +203,8 @@
     },
     {
       "path": "app.py",
-      "size": 3726,
-      "sha256": "1d3f4890b0ebeb18b8c86b00ec31257317dd53966c3febc048acf6af4c9a44a1"
+      "size": 4024,
+      "sha256": "83aff49fa31f2a49ff64875cb173868bd812d7ee5a96e17088ca04943097dbc0"
     },
     {
       "path": "assets/fallback.ttf",
@@ -243,8 +243,8 @@
     },
     {
       "path": "bin/7zz-License.txt",
-      "size": 6029,
-      "sha256": "99df5a516035baca9f2e8095977599d4a4340f58ba900f870238943996014f53"
+      "size": 5885,
+      "sha256": "bfcb66ce77b67efd57465ecce23425841e1defba4307fcb012080cccfc11a870"
     },
     {
       "path": "bin/7zzs",
@@ -402,6 +402,11 @@
       "sha256": "ec758260ce493499babaa5257527dfc8f710c16cbe4293c4e3bb1bf21b5ba774"
     },
     {
+      "path": "rh/backlight.py",
+      "size": 1707,
+      "sha256": "e62c35ffab3532381a8d4dd6fdbafd9664db7dcfbcfe5ceeeb190e4d613c7fe4"
+    },
+    {
       "path": "rh/boxart.py",
       "size": 1374,
       "sha256": "8c56849409a2a36c1c5265bf682a4cb1e3beb6d3c5d59823b501e2c3c9c9fd78"
@@ -463,8 +468,13 @@
     },
     {
       "path": "rh/i18n.py",
-      "size": 51004,
-      "sha256": "fba0d30768948709bbf82cef9bcb8d604cd705c849bab91d17c887b2f73480ff"
+      "size": 55037,
+      "sha256": "0853fdbfb97186375fed096d002b669a436e52a4658c57d06234b12b84b81987"
+    },
+    {
+      "path": "rh/inapp_player.py",
+      "size": 15856,
+      "sha256": "c9cf8a7741b1a2d769c3ef8fdf8769d7b63370347855e44b4883e5d08c91d847"
     },
     {
       "path": "rh/inputs.py",
@@ -573,8 +583,18 @@
     },
     {
       "path": "rh/paths.py",
-      "size": 5168,
-      "sha256": "a92a701469bb78ac447f9332f5db6eb7d715f3acdffaec88ef5bf9268f181db9"
+      "size": 5398,
+      "sha256": "4eceaad141d361cafa038e8ee4f9b4a3206c9db4462c86615daafb5499b767e2"
+    },
+    {
+      "path": "rh/playback.py",
+      "size": 11068,
+      "sha256": "b080717235be40295be8d20cd75a2e5668ba59816d637d06e92019edd28fd910"
+    },
+    {
+      "path": "rh/player.py",
+      "size": 5877,
+      "sha256": "e9a77bbe8a23bb57b3097aff86a5c383a82f3294bc70d8ec8a2f7cdf665d4993"
     },
     {
       "path": "rh/romfiles.py",
@@ -622,9 +642,19 @@
       "sha256": "50c51dde0510d7a835ee8f6e7cbc39bf8d6a93247a926fe37ed1d6b02eddee8a"
     },
     {
+      "path": "rh/screens/player.py",
+      "size": 12740,
+      "sha256": "236c05639aa7e3c73db2459aacba3b86989b6c5050ae3de0cd80e33c509ad124"
+    },
+    {
+      "path": "rh/screens/queue.py",
+      "size": 6399,
+      "sha256": "23c589f90e501e244a80ce99ec0ef113d9953091b8200c148d872743814255de"
+    },
+    {
       "path": "rh/screens/settings.py",
-      "size": 7568,
-      "sha256": "4cd72a390537290d3ffd5b4d5a5422dacfe4a95286f9bd4d026cd076149a7994"
+      "size": 8898,
+      "sha256": "e3ea3014b50c2c39d23397d280d4185f3372b18e6effd7b5f9e48946cc338032"
     },
     {
       "path": "rh/screens/splash.py",
@@ -642,9 +672,14 @@
       "sha256": "232d08b631dcda5742324f44b7b459bced23b65e32fd837ba4d197c1b27bff9e"
     },
     {
+      "path": "rh/screens/watch.py",
+      "size": 13287,
+      "sha256": "e05398eff369873c3ce357834167bdd5deb40b66658f39a3f7f209ec48d77058"
+    },
+    {
       "path": "rh/screens/youtube.py",
-      "size": 15744,
-      "sha256": "76041f496d9674f81b2781ee978e5571ab12007348a2ddaad4d47ca25925d847"
+      "size": 19553,
+      "sha256": "0754279f377b53712024fed7de1e4957a0c3d919cabbd83536d4929b2206ed92"
     },
     {
       "path": "rh/services.py",
@@ -658,8 +693,8 @@
     },
     {
       "path": "rh/state.py",
-      "size": 4896,
-      "sha256": "f667f80b618e4701090b23c894bf90a2d49559f6eb3a82966e099bd105911128"
+      "size": 5541,
+      "sha256": "61f5a3f72f22889ce2a773d562e4918710e3dfae909350125db8ee32f49dbf94"
     },
     {
       "path": "rh/storage.py",
@@ -703,13 +738,13 @@
     },
     {
       "path": "rh/yt.py",
-      "size": 36658,
-      "sha256": "1cf832c8e7a698f538ee447593fb50e4c781b520d611d9d1375ffe2d86558f2a"
+      "size": 45817,
+      "sha256": "2781f2e984c08dbda05c2121591af3fa7caf113e8026503dd9e74f31a25c64ca"
     },
     {
       "path": "rh/yt_player.py",
-      "size": 16795,
-      "sha256": "a91119067cde545541e9b606d8f5ae2a869025dfe4ed7093b186103d54655b7f"
+      "size": 21016,
+      "sha256": "8d8fec020007bc2865b734c93ce5bfabea8b3409fe345f571f141b1a991ed787"
     },
     {
       "path": "settings.json",
