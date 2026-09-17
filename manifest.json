@@ -1,12 +1,12 @@
 {
-  "version": "3.10",
+  "version": "3.11",
   "full_release_version": "2.27",
   "python": "any",
-  "built": "2026-09-17T17:21:11+0700",
+  "built": "2026-09-17T17:26:24+0700",
   "base_url": "https://retrohub-ota.swpts.site",
   "note": {
-    "vi": "Bản 3.10: In-app video dùng YUV native (SDL_UpdateYUVTexture + ffmpeg yuv420p) để tránh lỗi texture BGRA/ARGB trên GLES2.",
-    "en": "v3.10: in-app video uses native YUV (SDL_UpdateYUVTexture + ffmpeg yuv420p) to avoid BGRA/ARGB texture issues on GLES2."
+    "vi": "Bản 3.11: Sửa nạp YUV (PySDL2 cần POINTER(c_ubyte), không phải c_char_p) — khắc phục màn xanh lá; chống spam log lỗi.",
+    "en": "v3.11: fix YUV upload (PySDL2 needs POINTER(c_ubyte), not c_char_p) - fixes the green screen; throttle error logging."
   },
   "remove": [
     "app.pyc",
@@ -473,8 +473,8 @@
     },
     {
       "path": "rh/inapp_player.py",
-      "size": 23568,
-      "sha256": "f02e92ec932ed163503b02c05ddd2625abddd3abd4a9e917e1dbd2d81b498789"
+      "size": 24010,
+      "sha256": "933023287a5387b206c11892b9314e0e1dae4493e361a68237762e0c9fa91b10"
     },
     {
       "path": "rh/inputs.py",
@@ -734,7 +734,7 @@
     {
       "path": "rh/version.py",
       "size": 1530,
-      "sha256": "dff3188a30dd010e46e6dfa52a378e3cce2112668f8db51e5959af9713e48289"
+      "sha256": "0d67831ffd6b7c772e98f7ecff63d326ae555c24b87901485033505a6eb69f11"
     },
     {
       "path": "rh/yt.py",
